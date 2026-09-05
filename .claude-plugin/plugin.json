@@ -15,7 +15,5 @@
     "flight-record",
     "hooks",
     "acceptance"
-  ],
-  "hooks": "./hooks/hooks.json",
-  "skills": "./skills"
+  ]
 }
