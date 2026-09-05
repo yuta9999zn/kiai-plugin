@@ -248,7 +248,7 @@ const SECRETS = [
   ['AccountName=x;AccountKey=abcdefghijklmnopqrstuvwxyz0123456789ABCDEF==;EndpointSuffix=core', 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF'],
   ['sshpass -p hunter2222 ssh host', 'hunter2222'],
   ['ANTHROPIC_API_KEY="sk-ant-' + 'api03-abcdefghijklmnop"', 'abcdefghijklmnop'],
-  ['-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH PRIVATE KEY-----', 'b3BlbnNzaC1rZXk'],
+  ['-----BEGIN OPENSSH ' + 'PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH ' + 'PRIVATE KEY-----', 'b3BlbnNzaC1rZXk'],
 ];
 
 test('P3 redact: 25 common credential shapes never reach a record (Bash command, description, note, Grep pattern)', () => {

@@ -1,6 +1,6 @@
 {
   "name": "kiai-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "KIAI black box for AI coding agents (Claude Code plugin + CLI)",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/flight.test.mjs test/review.test.mjs"
+    "test": "node --test test/flight.test.mjs test/review.test.mjs test/accept.test.mjs"
   },
   "homepage": "https://github.com/yuta9999zn/kiai-plugin",
   "repository": {

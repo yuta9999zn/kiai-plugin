@@ -52,11 +52,11 @@ test('recordHash ignores the hash field itself and depends on prev', () => {
 });
 
 test('redact: keys, tokens, bearer and password= are masked; ordinary text untouched', () => {
-  assert.equal(redact('key sk-abcdefghijklmnop1234 end'), 'key [REDACTED] end');
-  assert.equal(redact('AKIAABCDEFGHIJKLMNOP'), '[REDACTED]');
+  assert.equal(redact('key sk-' + 'abcdefghijklmnop1234 end'), 'key [REDACTED] end');
+  assert.equal(redact('AKIA' + 'ABCDEFGHIJKLMNOP'), '[REDACTED]');
   assert.equal(redact('Authorization: Bearer abcdefghijklmnopqrstuvwxyz'), 'Authorization: Bearer [REDACTED]');
   assert.equal(redact('curl -u x --password=hunter22 host'), 'curl -u x --password=[REDACTED] host');
-  assert.equal(redact('ghp_abcdefghijklmnopqrstuvwxyz0123'), '[REDACTED]');
+  assert.equal(redact('ghp_' + 'abcdefghijklmnopqrstuvwxyz0123'), '[REDACTED]');
   assert.equal(redact('git status && npm test'), 'git status && npm test');
 });
 
@@ -66,7 +66,7 @@ test('summarizeTool: Write stores path + sha256 + bytes, never content; Bash sto
   assert.equal(JSON.stringify(w).includes('SECRET BODY'), false);
   const e = summarizeTool('Edit', { file_path: 'x', old_string: 'o', new_string: 'n' });
   assert.equal(e.content_sha256, sha256('n'));
-  const b = summarizeTool('Bash', { command: 'export OPENAI_API_KEY=sk-abcdefghijklmnop1234 && run' });
+  const b = summarizeTool('Bash', { command: 'export OPENAI_API_KEY=sk-' + 'abcdefghijklmnop1234 && run' });
   assert.equal(b.command.includes('sk-abcdef'), false);
   assert.deepEqual(summarizeTool('WebFetch', { url: 'u', prompt: 'p' }), { keys: ['url', 'prompt'] });
 });

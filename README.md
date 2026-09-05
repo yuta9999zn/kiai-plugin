@@ -44,6 +44,7 @@ node /path/to/kiai-plugin/bin/kiai.mjs report --uow UOW-119 --out evidence-UOW-1
 node /path/to/kiai-plugin/bin/kiai.mjs report --since 2026-09-01 --json
 node /path/to/kiai-plugin/bin/kiai.mjs note "GATE 3 approved, 2 follow-ups" --by tech-lead
 node /path/to/kiai-plugin/bin/kiai.mjs status
+node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-119 --decision approve --by "tech lead"   # acceptance packet, see below
 ```
 
 A report looks like this (from the real probe run on Claude Code 2.1.261, 2026-09-05):
@@ -59,6 +60,40 @@ A report looks like this (from the real probe run on Claude Code 2.1.261, 2026-0
 - Git at stop: `bolt/UOW-119` @ `no commits` — 0 files changed, +0 −0, 1 dirty paths
 - Shell commands: `echo kiai-probe-ok`
 ```
+
+## Acceptance packet — what you sign when you accept AI-written code
+
+```bash
+node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123                       # DRAFT: read it before deciding
+node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123 --decision approve --by "Jane Lead" --note "2 follow-ups" --ac criteria.md --lang both
+node /path/to/kiai-plugin/bin/kiai.mjs accept --check acceptance-UOW-123.md       # anyone can recheck the footer hash
+```
+
+`kiai accept` builds an acceptance packet (`.md` + `.json` with the same fields) from the flight record of one
+unit of work: the sessions, every file the agent wrote with its recorded sha256 **and whether the file on disk
+still matches it** (`matches` / `matches (line endings differ)` / `CHANGED after` / `MISSING` / `edit-only` /
+`outside the repository`), the test commands that ran, the shell commands, the git state at stop, notes, records
+in the same sessions that carry no UoW tag, and the acceptance criteria you pass with `--ac` (or keep in
+`.kiai/ac/<UoW>.md` — if the agent itself wrote that file, the packet says so). The file ends with
+`Hash: sha256(everything above)`. Paths are stored relative to the repository, so a clone or a moved checkout
+reconciles the same way. `--lang vi` or `--lang both` labels the packet in Vietnamese / bilingual.
+
+Without `--decision` you get `acceptance-<UoW>.draft.md`; with it you get `acceptance-<UoW>.md`, and the decision
+is sealed into the flight record as a `decision` record carrying the sha256 of the packet file, of its body and of
+the `.json`, so the packet and the chain vouch for each other. The decision record is written **before** the packet
+lands on disk: if the chain cannot be written, no packet exists. A later draft never overwrites a sealed packet; a
+later decision keeps the previous one as `acceptance-<UoW>.prev-<sha8>.md`. `--check` recomputes the footer and,
+run inside the repository, prints the `decision` record that sealed the file (or `NOT SEALED`).
+
+Decisions are for humans. Inside an agent session (Claude Code sets `CLAUDECODE`) `accept --decision` is refused;
+`KIAI_ALLOW_AGENT_DECISION=1` lets it through, and then the record, the packet and `--check` all say
+"recorded via agent session". This is an environment check, not a cryptographic signature (planned).
+
+Honesty notes: hooks carry no exit code, so a test command shows **"completed (not interrupted, no error
+reported)"**, never "passed"; a command that Claude Code reports as failed shows "interrupted / error reported".
+`Edit` and `NotebookEdit` records hash only the edited fragment, so those files show `edit-only` rather than a disk
+comparison. `accept` refuses to produce a packet on a broken chain, and refuses a `--decision` when the unit of
+work has no records.
 
 ## What a record is
 
@@ -116,7 +151,7 @@ Cursor and Codex hooks are not wired in this version: `record` accepts any JSON 
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~5 s, 32 tests
+cd kiai-plugin && npm test      # node --test, offline, ~8 s, 42 tests (v0.2.0)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).

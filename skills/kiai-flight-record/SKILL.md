@@ -22,7 +22,14 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" report --uow UOW-119         # one uni
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" report --since 2026-09-01 --json
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" note "GATE 3 approved" --by "tech-lead"
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" status
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --uow UOW-119                     # DRAFT acceptance packet (.md + .json)
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --check acceptance-UOW-119.md     # recheck a packet's footer hash
 ```
+
+Only a human runs `accept --decision …`: it seals a decision into the chain, and the CLI refuses it inside an
+agent session (`CLAUDECODE` is set). As the agent, produce the DRAFT packet (`acceptance-<UoW>.draft.md`) when a
+unit of work is done and hand it over; never pass `--decision` or `KIAI_ALLOW_AGENT_DECISION` yourself, and never
+write `.kiai/ac/<UoW>.md` unless the human asked you to draft criteria (the packet flags agent-written criteria).
 
 ## How to use it well
 

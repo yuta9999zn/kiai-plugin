@@ -1,7 +1,7 @@
 {
   "name": "kiai",
-  "version": "0.1.0",
-  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, with verify and evidence reports. Install in 10 minutes on any repo.",
+  "version": "0.2.0",
+  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, with verify, evidence reports and an acceptance packet (kiai accept). Install in 10 minutes on any repo.",
   "author": {
     "name": "Nguyen Truong An"
   },
