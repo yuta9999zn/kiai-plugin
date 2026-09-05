@@ -1,0 +1,8 @@
+{
+  "name": "kiai",
+  "owner": { "name": "Nguyen Truong An" },
+  "description": "KIAI — black box and acceptance gate for AI coding agents",
+  "plugins": [
+    { "name": "kiai", "source": "./", "description": "Append-only, hash-chained flight record of every agent session and tool call, with verify and evidence reports." }
+  ]
+}
