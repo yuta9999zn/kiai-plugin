@@ -86,7 +86,8 @@ test('P1 append: when files and pointer disagree, append continues from the file
   const file = seed(root, 4);
   const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
   fs.writeFileSync(file, lines.slice(0, 2).join('\n') + '\n'); // someone truncated the tail
-  const next = appendRecord(root, buildRecord(payload(), { cwd: root }));
+  // same UTC day as seed(): the appended record must land in the SAME day file the test reads back (CI at 00:17Z caught this)
+  const next = appendRecord(root, buildRecord(payload(), { cwd: root, now: new Date(Date.UTC(2026, 8, 5, 1, 0, 30)) }));
   assert.equal(next.seq, 3, 'continues from the files, not from the pointer');
   assert.equal(next.prev, JSON.parse(lines[1]).hash);
   assert.deepEqual(next.anomaly, { kind: 'pointer_mismatch', pointer_seq: 4, pointer_last: JSON.parse(lines[3]).hash, files_seq: 2, files_last: JSON.parse(lines[1]).hash });
@@ -104,7 +105,7 @@ test('P1 append: a stale pointer (older than the files) is also recorded, and se
   const root = tmpRoot();
   seed(root, 5);
   fs.writeFileSync(path.join(writerDir(root), 'chain.json'), JSON.stringify({ seq: 2, last: 'deadbeef' }));
-  const rec = appendRecord(root, buildRecord(payload(), { cwd: root }));
+  const rec = appendRecord(root, buildRecord(payload(), { cwd: root, now: new Date(Date.UTC(2026, 8, 5, 1, 0, 31)) }));
   assert.equal(rec.seq, 6);
   assert.equal(rec.anomaly.kind, 'pointer_mismatch');
   assert.equal(verifyChain(root).ok, true);
