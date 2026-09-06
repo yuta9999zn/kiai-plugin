@@ -8,7 +8,7 @@
 //   report [--uow ID] [--session ID] [--since DATE] [--json] [--out FILE]
 //   hooks                      print the hooks block for manual install into .claude/settings.json
 //   accept --uow ID [--decision approve|reject|conditional] [--by who] [--note TEXT] [--ac FILE]
-//          [--lang en|vi|both] [--out DIR]     acceptance packet (.md + .json) from the flight record;
+//          [--lang en|vi|both] [--out DIR]     acceptance packet (.md + .json, default .kiai/acceptance/) from the flight record;
 //          with --decision the decision is sealed into the chain with the packet hash
 //   accept --check FILE        recompute a packet's Hash: footer; exit 1 if it does not match
 import fs from 'node:fs';
@@ -215,7 +215,11 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
       const pkg = buildPacket({ root, records, verification: v, uow, decision, by, note, via, ac, acPath });
       if (decision && pkg.records_in_scope === 0) { stderr.write(`kiai accept: refusing — no flight records for ${uow}; nothing to decide on\n`); return 1; }
       const md = renderPacket(pkg, lang);
-      const outDir = path.resolve(cwd, args.out && args.out !== true ? String(args.out) : '.');
+      // Default: <root>/.kiai/acceptance — committed with the code, found by KIAI Monitor (UOW-122). --out overrides.
+      // No black box here (no .kiai/) ⇒ write next to you and say so; `accept` never creates a .kiai/ of its own (review 122 N6).
+      const hasBox = fs.existsSync(path.join(root, '.kiai'));
+      const outDir = args.out && args.out !== true ? path.resolve(cwd, String(args.out)) : hasBox ? path.join(root, '.kiai', 'acceptance') : path.resolve(cwd);
+      if (!hasBox && !(args.out && args.out !== true)) stderr.write(`kiai accept: no .kiai/ at ${root} — writing the packet into the current directory (run \`kiai init\` to get a black box)\n`);
       fs.mkdirSync(outDir, { recursive: true });
       // Drafts and decisions never share a file name, so a later draft cannot overwrite a sealed packet (review 120 P3).
       const base = decision ? `acceptance-${uow}` : `acceptance-${uow}.draft`;

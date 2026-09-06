@@ -241,12 +241,12 @@ test('cli accept: refuses on a broken chain, refuses a decision with no records,
   fs.writeFileSync(path.join(root, '.kiai', 'ac', 'UOW-777.md'), '- [ ] AC from file password=hunter2222\n');
   let r = await runCli(['accept', '--uow', 'UOW-777'], { cwd: root });
   assert.equal(r.code, 0);
-  let md = fs.readFileSync(path.join(root, 'acceptance-UOW-777.draft.md'), 'utf8');
+  let md = fs.readFileSync(path.join(root, '.kiai', 'acceptance', 'acceptance-UOW-777.draft.md'), 'utf8');
   assert.match(md, /AC from file password=\[REDACTED\]/);
   assert.equal(md.includes('WRITTEN BY THE AGENT'), false);
   rec(root, { tool_name: 'Write', tool_use_id: 'tu-ac', tool_input: { file_path: path.join(root, '.kiai', 'ac', 'UOW-777.md'), content: '- [ ] AC from file password=hunter2222\n' } });
   r = await runCli(['accept', '--uow', 'UOW-777'], { cwd: root });
-  md = fs.readFileSync(path.join(root, 'acceptance-UOW-777.draft.md'), 'utf8');
+  md = fs.readFileSync(path.join(root, '.kiai', 'acceptance', 'acceptance-UOW-777.draft.md'), 'utf8');
   assert.match(md, /WRITTEN BY THE AGENT/); assert.match(r.stdout, /ac-written-by-agent/);
   r = await runCli(['accept', '--uow', 'UOW-000', '--decision', 'approve'], { cwd: root });
   assert.equal(r.code, 1); assert.match(r.stderr, /no flight records/);
@@ -267,4 +267,18 @@ test('cli accept: refuses on a broken chain, refuses a decision with no records,
   r = await runCli(['accept', '--uow', 'UOW-777', '--decision', 'approve'], { cwd: root });
   assert.equal(r.code, 1); assert.match(r.stderr, /refusing — flight record BROKEN/);
   assert.equal(readAll(root).length, count, 'no decision record was appended to a broken chain');
+});
+
+test('cli accept 0.2.1: default outDir is <root>/.kiai/acceptance only when the repository already has a black box; elsewhere the packet lands in cwd and NO .kiai/ is created (R122 N6)', async () => {
+  const root = tmpRoot(); seedUow(root);
+  let r = await runCli(['accept', '--uow', 'UOW-777'], { cwd: root });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(fs.existsSync(path.join(root, '.kiai', 'acceptance', 'acceptance-UOW-777.draft.md')), 'draft lands in .kiai/acceptance');
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'kiai-nobox-'));
+  fs.mkdirSync(path.join(bare, '.git'));
+  r = await runCli(['accept', '--uow', 'UOW-1'], { cwd: bare });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /no \.kiai\/ at .* writing the packet into the current directory/);
+  assert.ok(fs.existsSync(path.join(bare, 'acceptance-UOW-1.draft.md')), 'packet next to you');
+  assert.equal(fs.existsSync(path.join(bare, '.kiai')), false, 'accept never creates a black box');
 });

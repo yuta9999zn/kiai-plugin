@@ -23,7 +23,7 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" report --since 2026-09-01 --json
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" note "GATE 3 approved" --by "tech-lead"
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" status
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --uow UOW-119                     # DRAFT acceptance packet (.md + .json)
-node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --check acceptance-UOW-119.md     # recheck a packet's footer hash
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --check .kiai/acceptance/acceptance-UOW-119.md   # recheck a packet's footer hash
 ```
 
 Only a human runs `accept --decision …`: it seals a decision into the chain, and the CLI refuses it inside an

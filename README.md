@@ -66,7 +66,8 @@ A report looks like this (from the real probe run on Claude Code 2.1.261, 2026-0
 ```bash
 node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123                       # DRAFT: read it before deciding
 node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123 --decision approve --by "Jane Lead" --note "2 follow-ups" --ac criteria.md --lang both
-node /path/to/kiai-plugin/bin/kiai.mjs accept --check acceptance-UOW-123.md       # anyone can recheck the footer hash
+node /path/to/kiai-plugin/bin/kiai.mjs accept --check .kiai/acceptance/acceptance-UOW-123.md   # anyone can recheck the footer hash
+node /path/to/kiai-plugin/bin/kiai.mjs accept --check .kiai/acceptance/acceptance-UOW-123.json # the .json (what a dashboard reads) must be sealed too
 ```
 
 `kiai accept` builds an acceptance packet (`.md` + `.json` with the same fields) from the flight record of one
@@ -78,7 +79,7 @@ in the same sessions that carry no UoW tag, and the acceptance criteria you pass
 `Hash: sha256(everything above)`. Paths are stored relative to the repository, so a clone or a moved checkout
 reconciles the same way. `--lang vi` or `--lang both` labels the packet in Vietnamese / bilingual.
 
-Without `--decision` you get `acceptance-<UoW>.draft.md`; with it you get `acceptance-<UoW>.md`, and the decision
+Packets land in `.kiai/acceptance/` by default (`--out DIR` overrides) so they travel with the code and KIAI Monitor can list them (v0.2.0 wrote them into the current directory — move old packets into `.kiai/acceptance/` if you want them listed; a directory without `.kiai/` still gets the packet next to you, `accept` never creates a black box by itself). Without `--decision` you get `acceptance-<UoW>.draft.md`; with it you get `acceptance-<UoW>.md`, and the decision
 is sealed into the flight record as a `decision` record carrying the sha256 of the packet file, of its body and of
 the `.json`, so the packet and the chain vouch for each other. The decision record is written **before** the packet
 lands on disk: if the chain cannot be written, no packet exists. A later draft never overwrites a sealed packet; a
@@ -151,7 +152,7 @@ Cursor and Codex hooks are not wired in this version: `record` accepts any JSON 
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~8 s, 42 tests (v0.2.0)
+cd kiai-plugin && npm test      # node --test, offline, ~8 s, 42 tests (v0.2.1)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).

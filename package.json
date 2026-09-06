@@ -1,6 +1,6 @@
 {
   "name": "kiai-plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "KIAI black box for AI coding agents (Claude Code plugin + CLI)",
   "type": "module",
   "private": true,
