@@ -1,1 +1,5 @@
-* text=auto eol=lf
+# KIAI black box (UOW-123): anchors.jsonl is append-only, so a union merge is safe here and
+# only here — every other file must merge normally. Copy this line into the repository you
+# are recording; do not add it for files whose lines EVOLVE (see backlog UOW-096 lesson).
+.kiai/anchors.jsonl merge=union
+*.sh text eol=lf

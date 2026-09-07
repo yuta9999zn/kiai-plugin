@@ -22,12 +22,17 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" report --uow UOW-119         # one uni
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" report --since 2026-09-01 --json
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" note "GATE 3 approved" --by "tech-lead"
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" status
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" anchor --by "tech-lead"           # witness the heads; the human then COMMITS .kiai/anchors.jsonl
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --uow UOW-119                     # DRAFT acceptance packet (.md + .json)
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --check .kiai/acceptance/acceptance-UOW-119.md   # recheck a packet's footer hash
 ```
 
-Only a human runs `accept --decision …`: it seals a decision into the chain, and the CLI refuses it inside an
-agent session (`CLAUDECODE` is set). As the agent, produce the DRAFT packet (`acceptance-<UoW>.draft.md`) when a
+`verify` prints an `ANCHORED` / `NOT ANCHORED` line: anchors (`.kiai/anchors.jsonl`, committed) are what lets
+someone on another machine see that the TAIL of a chain was cut. Report that line as it is; do not describe an
+un-anchored chain as tamper-proof.
+
+Only a human runs `accept --decision …`: it seals a decision into the chain (and anchors it), and the CLI
+refuses it inside an agent session (`CLAUDECODE` is set). As the agent, produce the DRAFT packet (`acceptance-<UoW>.draft.md`) when a
 unit of work is done and hand it over; never pass `--decision` or `KIAI_ALLOW_AGENT_DECISION` yourself, and never
 write `.kiai/ac/<UoW>.md` unless the human asked you to draft criteria (the packet flags agent-written criteria).
 

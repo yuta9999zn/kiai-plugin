@@ -3,7 +3,8 @@
 //   init                       create .kiai/ in the current repo (idempotent)
 //   record [Event]             read a Claude Code hook payload from stdin, append one record. Always exits 0.
 //   note "<text>" [--by who]   append a human/agent note (e.g. a gate decision) to the chain
-//   verify                     recompute every chain; exit 1 if any is broken
+//   verify                     recompute every chain, then check it against the committed anchors; exit 1 if broken
+//   anchor [--by who] [--note TEXT]   append a committed witness of the current heads to .kiai/anchors.jsonl
 //   status                     counts, writers, chain heads
 //   report [--uow ID] [--session ID] [--since DATE] [--json] [--out FILE]
 //   hooks                      print the hooks block for manual install into .claude/settings.json
@@ -16,8 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendRecord, buildRecord, noteRecord, initFlight, verifyChain, readAll, filterRecords,
-  renderMarkdown, summarize, logError, flightDir, writerId, detectUow, sha256, redact,
-} from '../lib/flight.mjs';
+  renderMarkdown, summarize, logError, flightDir, writerId, detectUow, sha256, redact, buildAnchor, appendAnchor, readAnchors, anchorsFile, anchorsTracked } from '../lib/flight.mjs';
 import { buildPacket, renderPacket, checkPacket, findSealing, DECISIONS } from '../lib/accept.mjs';
 import os from 'node:os';
 
@@ -66,7 +66,28 @@ function hooksBlock() {
   return { hooks };
 }
 
-export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout = process.stdout, stderr = process.stderr } = {}) {
+export /** One line describing what the committed anchors prove about this chain (UOW-123). */
+const TRACK_NOTE = {
+  committed: 'the anchors file is committed, so anyone with this history can check it',
+  ignored: 'WARNING: .kiai/anchors.jsonl is IGNORED by a .gitignore rule (older setups ignored all of .kiai/), so `git add` refuses it and the anchor can never travel — remove that rule, or `git add -f .kiai/anchors.jsonl`',
+  modified: 'WARNING: anchors.jsonl differs from the committed copy — commit it, otherwise only this machine holds the newest anchor',
+  untracked: 'WARNING: anchors.jsonl is not in git yet — until it is committed and pushed it proves no more than chain.json',
+  'no-commit': 'WARNING: this repository has no commit yet — the anchor is only a local file so far',
+  'no-git': 'WARNING: no git repository here — an anchor outside version control can be deleted with the tail it witnesses',
+};
+
+/** One line describing what the anchors prove about this chain right now (UOW-123). */
+function anchorLine(v, track) {
+  const a = v.anchors;
+  const note = TRACK_NOTE[track] ? ` — ${TRACK_NOTE[track]}` : '';
+  if (!a || !a.used) return `NOT ANCHORED — no witness of these heads outside this machine (\`kiai anchor\`, then commit .kiai/anchors.jsonl); a clone cannot tell whether the tail was cut${a && a.bad ? ` [${a.bad} anchor line(s) ignored]` : ''}`;
+  const l = a.latest;
+  return a.ok
+    ? `ANCHORED — ${a.used} anchor(s), latest ${l.ts} covering ${l.records} records; records written after it rest on this machine's chain.json alone${note}`
+    : `ANCHOR MISMATCH — ${a.reason}`;
+}
+
+async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout = process.stdout, stderr = process.stderr } = {}) {
   const args = parseArgs(argv);
   const cmd = args._[0];
   const root = findRoot(cwd) ?? path.resolve(cwd);
@@ -120,13 +141,16 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
       const warn = [];
       if (v.dropped) warn.push(`${v.dropped} dropped record(s) — hook could not take the lock; log incomplete, see dropped.jsonl`);
       if (v.anomalies) warn.push(`${v.anomalies} anomaly record(s) — files and local pointer disagreed at append time`);
+      if (v.anchors.bad) warn.push(`${v.anchors.bad} anchor line(s) ignored — hash does not match, an edited anchor cannot make a chain look broken`);
       if (v.ok) {
         const multi = v.chains.length > 1 ? ` in ${v.chains.length} chains (${v.chains.map((c) => `${c.writer || 'legacy'} ${c.count}`).join(', ')})` : '';
         stdout.write(`OK — ${v.count} records${multi}, head ${v.last.slice(0, 16)}…${warn.length ? ` (${warn.length} warning${warn.length > 1 ? 's' : ''})` : ''}\n`);
+        stdout.write(anchorLine(v, anchorsTracked(root)) + '\n');
         for (const w of warn) stdout.write(`WARN — ${w}\n`);
         return 0;
       }
       stdout.write(`BROKEN at seq ${v.broken ?? '?'} — ${v.reason} (${v.count} records read)\n`);
+      stdout.write(anchorLine(v, anchorsTracked(root)) + '\n');
       for (const w of warn) stdout.write(`WARN — ${w}\n`);
       return 1;
     }
@@ -137,6 +161,8 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
       stdout.write(`flight dir: ${flightDir(root)}\nthis writer: ${writerId(root)}\nrecords: ${records.length}\nsessions: ${sessions.length}\nchains: ${v.chains.length}\n`);
       for (const c of v.chains) stdout.write(`  ${c.writer || '(legacy)'}: ${c.count} records, ${c.ok ? 'intact' : 'BROKEN at seq ' + c.broken}\n`);
       if (v.dropped) stdout.write(`dropped: ${v.dropped}\n`);
+      const la = v.anchors.latest;
+      stdout.write(`anchors: ${v.anchors.used}${v.anchors.bad ? ` (+${v.anchors.bad} ignored)` : ''}${la ? ` — latest ${la.ts} by ${la.by || '?'}, ${la.records} records${la.git && la.git.commit ? `, git ${String(la.git.commit).slice(0, 8)}${la.git.dirty ? '+dirty' : ''}` : ''}` : ' — none (run `kiai anchor`)'}\nanchors file: ${anchorsTracked(root)}\n`);
       stdout.write(`chain: ${v.ok ? 'intact' : 'BROKEN at seq ' + v.broken}\n`);
       return v.ok ? 0 : 1;
     }
@@ -155,6 +181,20 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
         stdout.write(`written ${out}\n`);
       } else stdout.write(text);
       return v.ok ? 0 : 1;
+    }
+    case 'anchor': {
+      if (!fs.existsSync(path.join(root, '.kiai'))) { stderr.write(`kiai anchor: no .kiai/ at ${root} — run \`kiai init\` first\n`); return 2; }
+      const v0 = verifyChain(root);
+      if (!v0.ok) { stderr.write(`kiai anchor: refusing — chain BROKEN at seq ${v0.broken ?? '?'}: ${v0.reason}\n`); return 1; }
+      if (!v0.count) { stderr.write('kiai anchor: refusing — no records to anchor yet\n'); return 1; }
+      const a = appendAnchor(root, buildAnchor(root, { by: args.by && args.by !== true ? String(args.by) : null, note: args.note && args.note !== true ? String(args.note) : null }));
+      stdout.write(`ANCHORED — ${a.records} records in ${a.writers.length} chain(s), head ${a.all_last.slice(0, 16)}… → ${path.relative(root, anchorsFile(root)).replace(/\\/g, '/')} line ${readAnchors(root).length}\n`);
+      const track = anchorsTracked(root);
+      stdout.write(a.git.commit
+        ? `  git ${a.git.commit.slice(0, 8)}${a.git.dirty ? ' (working tree dirty)' : ''} on ${a.git.branch || 'detached'}\n`
+        : a.git.repo ? '  git repository with no commit yet\n' : '  not a git repository\n');
+      stdout.write(`  NEXT: commit .kiai/anchors.jsonl and push it — ${TRACK_NOTE[track] || track}\n`);
+      return 0;
     }
     case 'hooks': {
       stdout.write(JSON.stringify(hooksBlock(), null, 2) + '\n');
@@ -179,6 +219,7 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
           stdout.write(ok ? `OK — packet hash ${c.expected.slice(0, 16)}… matches\n` : `MISMATCH — ${c.reason || `footer ${String(c.expected).slice(0, 16)}… but content hashes to ${String(c.actual).slice(0, 16)}…`}\n`);
         }
         const chainRoot = findRoot(path.dirname(file)) ?? findRoot(cwd);
+        if (chainRoot) { const cv = verifyChain(chainRoot); stdout.write(anchorLine(cv, anchorsTracked(chainRoot)) + '\n'); }
         if (chainRoot && fs.existsSync(flightDir(chainRoot))) {
           const sealing = findSealing(readAll(chainRoot), text);
           if (sealing.length) for (const r of sealing) stdout.write(`SEALED — decision record seq ${r.seq} (${r.writer || 'legacy'}): ${String(r.decision).toUpperCase()} by ${r.by} at ${r.ts}${r.via === 'agent-session' ? ' ⚠ via agent session' : ''}\n`);
@@ -230,6 +271,7 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
       const jsonText = JSON.stringify({ ...pkg, md_sha256: packetSha, md_path: path.basename(mdPath) }, null, 2) + '\n';
       const jsonSha = sha256(jsonText);
       let sealed = null;
+      let anchored = null;
       if (decision) {
         // Seal FIRST (into a temp pair), then move into place: no APPROVED packet can exist on disk without its record (P2).
         const tmpMd = mdPath + '.tmp'; const tmpJson = jsonPath + '.tmp';
@@ -252,6 +294,9 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
           if (fs.existsSync(p)) { const old = fs.readFileSync(p); fs.renameSync(p, p.replace(/(\.(md|json))$/, `.prev-${sha256(old).slice(0, 8)}$1`)); }
         }
         fs.renameSync(tmpMd, mdPath); fs.renameSync(tmpJson, jsonPath);
+        // UOW-123: the packet travels in git, so anchor the chain in the same breath — the committed
+        // anchor is what lets a clone see a cut tail. Never fatal: a packet without an anchor is still valid.
+        try { anchored = appendAnchor(root, buildAnchor(root, { by, note: `sealed ${uow}` })); } catch (e) { stderr.write(`kiai accept: packet sealed but anchor not written (${e.message})\n`); }
       } else {
         fs.writeFileSync(mdPath, md); fs.writeFileSync(jsonPath, jsonText);
       }
@@ -260,10 +305,11 @@ export async function main(argv = process.argv.slice(2), { cwd = process.cwd(), 
       if (pkg.warnings.length) stdout.write(`  warnings: ${pkg.warnings.join(', ')}\n`);
       stdout.write(`  packet file sha256: ${packetSha} (the Hash: footer inside covers the body only)\n`);
       if (sealed) stdout.write(`  sealed into flight record: seq ${sealed.seq} (${sealed.writer}) hash ${sealed.hash.slice(0, 16)}…${via === 'agent-session' ? ' ⚠ recorded from inside an agent session' : ''}\n`);
+      if (anchored) stdout.write(`  anchored: ${anchored.records} records → .kiai/anchors.jsonl (commit it together with the packet)\n`);
       return 0;
     }
     default:
-      stderr.write('usage: kiai <init|record|note|verify|status|report|hooks|accept>\n');
+      stderr.write('usage: kiai <init|record|note|verify|anchor|status|report|hooks|accept>\n');
       return cmd ? 2 : 0;
   }
 }

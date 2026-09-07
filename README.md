@@ -66,6 +66,7 @@ A report looks like this (from the real probe run on Claude Code 2.1.261, 2026-0
 ```bash
 node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123                       # DRAFT: read it before deciding
 node /path/to/kiai-plugin/bin/kiai.mjs accept --uow UOW-123 --decision approve --by "Jane Lead" --note "2 follow-ups" --ac criteria.md --lang both
+node /path/to/kiai-plugin/bin/kiai.mjs anchor --by "Jane Lead"                                # witness today's heads, then COMMIT .kiai/anchors.jsonl
 node /path/to/kiai-plugin/bin/kiai.mjs accept --check .kiai/acceptance/acceptance-UOW-123.md   # anyone can recheck the footer hash
 node /path/to/kiai-plugin/bin/kiai.mjs accept --check .kiai/acceptance/acceptance-UOW-123.json # the .json (what a dashboard reads) must be sealed too
 ```
@@ -129,10 +130,61 @@ witness (`chain.json`, not committed) of the last head it wrote, so on that mach
 **truncated or rewritten tail**; if a hook finds the files and the witness disagree, it seals that fact into
 the next record as an `anomaly`, which then cannot be removed without breaking the chain.
 
-It does **not** catch a tail truncated *on another machine* before the files were committed, nor a chain
-rewritten from record *k* onward with this very tool on a machine that holds no witness. An unanchored hash
-chain proves internal consistency, not completeness. **Anchor the head**: commit the `.jsonl` files (git
-history becomes the witness), and paste the head from `verify` into the PR or the acceptance note.
+Without an anchor it does **not** catch a tail truncated *on another machine*, nor a chain rewritten from
+record *k* onward with this very tool on a machine that holds no witness: an unanchored hash chain proves
+internal consistency, not completeness.
+
+## Anchors — the witness that travels
+
+```bash
+node /path/to/kiai-plugin/bin/kiai.mjs anchor --by "Jane Lead" --note "end of sprint 12"
+git add .kiai/anchors.jsonl && git commit -m "anchor flight record"     # ← the step that gives it value
+```
+
+`kiai anchor` appends one line to `.kiai/anchors.jsonl` — for every chain, how many records it had and what
+the record at that count hashed to — and, unlike `chain.json`, **that file is committed**. From then on
+`verify` checks every chain against every anchor and fails on:
+
+- **tail truncated since anchor** — a chain now has fewer records than an anchor witnessed (the hole this
+  closes: before anchors, a copy without `chain.json` reported `OK` after the last records were deleted);
+- **rewritten since anchor** — the record at that seq hashes to something else;
+- **writer removed since anchor** — a whole chain directory disappeared.
+
+`accept --decision` writes an anchor automatically, so a sealed acceptance packet and the witness for its
+chain travel in the same commit; `verify`, `status` and `accept --check` all print `ANCHORED` / `NOT ANCHORED`
+and say whether `anchors.jsonl` is actually committed.
+
+**What an anchor is worth, exactly — and what it is not:** an anchor is a line in a file. It is evidence only
+because your git history is; until you commit and push it, it proves no more than `chain.json` does, and the
+CLI says so in those words.
+
+What it catches: records removed or rewritten **while a committed anchor that covers them stays in place**.
+What it does **not** catch, measured, not assumed:
+
+- **One ordinary commit that deletes the records *and* the anchor line together.** No rebase, no force-push:
+  `git commit -m "trim old flight log"` is enough, and everyone who clones afterwards gets a clean `OK` /
+  `NOT ANCHORED` with no signal that an anchor ever existed. Only the file's history shows it —
+  `git log -p -- .kiai/anchors.jsonl`. Anchors move the cost of hiding work from *nothing* to *a commit that
+  says, in the record everyone can read, that the witness was deleted*; they do not make it impossible.
+- **A forged anchor.** `hash` is a plain sha256 with no secret, so it catches an *accidental* edit, not a
+  deliberate one: anyone who can commit can recompute it. The guarantee is the git history, never the hash.
+- **Records written after the last anchor** — those still rest on the machine-local `chain.json`.
+
+So: anchor at the moments that matter (a decision, a release, end of day), let `accept --decision` do it for
+you, and when the stakes are real read `git log -p -- .kiai/anchors.jsonl` instead of trusting one `verify`.
+
+An edited anchor line is ignored with a warning (its hash no longer matches), so a *careless* edit can never
+make an honest chain look broken. `.kiai/anchors.jsonl` is append-only. The `.gitattributes` in this
+repository is this repository's own; to get the same behaviour where you record, add the line yourself to the
+`.gitattributes` at the **root of that repository**:
+
+```
+.kiai/anchors.jsonl merge=union
+```
+
+(A rule inside a nested `.gitattributes` only applies to that directory, so putting it under `kiai-plugin/`
+would do nothing for the `.kiai/` at your repository root.) If an older setup ignores all of `.kiai/`, the
+anchor can never travel: `verify` says so, and you must drop that `.gitignore` rule (or `git add -f`).
 
 If a hook cannot take the lock within 8 s (hooks time out at 10 s), the record is written unsealed to
 `dropped.jsonl` and `verify`/`report` say so: the chain is intact but **the log is incomplete**, and you can see
