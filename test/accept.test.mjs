@@ -177,7 +177,7 @@ test('cli accept: draft writes .draft.md/.json without touching the chain; decis
   assert.equal(findSealing(readAll(root), md.replace(/\n/g, '\r\n')).length, 1, 'body hash survives CRLF re-encoding');
 
   r = await runCli(['accept', '--check', mdPath], { cwd: root });
-  assert.equal(r.code, 0); assert.match(r.stdout, /OK — packet hash/); assert.match(r.stdout, /SEALED — decision record seq \d+ .*APPROVE by tech lead/);
+  assert.equal(r.code, 0); assert.match(r.stdout, /OK \(footer only\) — packet hash/); assert.match(r.stdout, /SEALED — decision record seq \d+ .*APPROVE by tech lead/);
   r = await runCli(['accept', '--check', path.join(root, 'out', 'acceptance-UOW-777.json')], { cwd: root });
   assert.equal(r.code, 0); assert.match(r.stdout, /OK — \.json points at acceptance-UOW-777\.md/); assert.match(r.stdout, /SEALED/);
   r = await runCli(['accept', '--check', draftMd], { cwd: root });

@@ -6,7 +6,9 @@ description: Use when the user asks what an AI agent did in this repository, wan
 # KIAI flight record
 
 This repository keeps a **black box**: every Claude Code session start, tool call, tool result and stop
-is appended to `.kiai/flight/<writer>/YYYY-MM-DD.jsonl` by the `kiai` plugin hooks. Records are hash-chained:
+is appended to `.kiai/flight/<writer>/YYYY-MM-DD.jsonl` by the `kiai` plugin hooks. Codex CLI sessions can
+be brought in afterwards with `import codex`, into a separate chain and marked as imported — weaker
+evidence, and it must always be described as such. Records are hash-chained:
 `hash_n = sha256(hash_{n-1} + "\n" + canonical(record_n))`. Nothing is ever rewritten. One chain per
 *writer* (machine × working tree), so clones and worktrees never collide.
 
@@ -25,6 +27,10 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" status
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" anchor --by "tech-lead"           # witness the heads; the human then COMMITS .kiai/anchors.jsonl
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --uow UOW-119                     # DRAFT acceptance packet (.md + .json)
 node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" accept --check .kiai/acceptance/acceptance-UOW-119.md   # recheck a packet's footer hash
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" import codex --dry-run                    # Codex sessions run in THIS repo, not yet written
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" import codex                              # …then append them, in their own chain
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" signers --list                            # who may approve here
+node "${CLAUDE_PLUGIN_ROOT}/bin/kiai.mjs" verify --require-signature                # gate: every decision must be signed
 ```
 
 `verify` prints an `ANCHORED` / `NOT ANCHORED` line: anchors (`.kiai/anchors.jsonl`, committed) are what lets
@@ -32,7 +38,9 @@ someone on another machine see that the TAIL of a chain was cut. Report that lin
 un-anchored chain as tamper-proof.
 
 Only a human runs `accept --decision …`: it seals a decision into the chain (and anchors it), and the CLI
-refuses it inside an agent session (`CLAUDECODE` is set). As the agent, produce the DRAFT packet (`acceptance-<UoW>.draft.md`) when a
+refuses it inside an agent session (`CLAUDECODE` is set). That refusal is an environment check, so the
+real binding is the **signature**: `--sign` ties a decision to a key listed in the committed
+`.kiai/allowed_signers`. As the agent, produce the DRAFT packet (`acceptance-<UoW>.draft.md`) when a
 unit of work is done and hand it over; never pass `--decision` or `KIAI_ALLOW_AGENT_DECISION` yourself, and never
 write `.kiai/ac/<UoW>.md` unless the human asked you to draft criteria (the packet flags agent-written criteria).
 
@@ -47,3 +55,13 @@ write `.kiai/ac/<UoW>.md` unless the human asked you to draft criteria (the pack
 4. When asked "what did the agent do", answer from `report`, and say plainly what the record does *not*
    show (file contents, reasoning, token cost) and what `verify` does *not* prove (completeness on a
    machine that holds no local witness — anchor the head in git / the PR).
+5. **Report the signature state exactly as the tool prints it** — `SIGNED by <identity>` /
+   `UNSIGNED` / `SIGNATURE INVALID` / `SIGNER NOT ALLOWED`. Never soften `UNSIGNED` into "approved":
+   an unsigned decision is a line of text anyone able to set an environment variable could have
+   written. And never claim more than a signature gives: it binds a named key to this exact packet
+   body — it does **not** show the signer read it, and it does **not** mean the agent was not
+   compromised. Never sign on a human's behalf, and never touch their keys.
+6. **Never let an imported record pass for a live one.** Records with `via: "import"` (writer
+   `<writer>-codex`) were read back from a log Codex wrote, *after* the work — the chain proves nobody
+   changed them since the import, not that Codex did what they say. `report` prints the count; repeat it
+   when you cite such a record, and say which agent it came from (`agent` field).

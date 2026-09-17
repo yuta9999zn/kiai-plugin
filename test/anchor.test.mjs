@@ -213,7 +213,7 @@ test('anchor: status counts anchors; accept --decision writes one and --check re
 
   r = await runCli(['accept', '--check', path.join('.kiai', 'acceptance', 'acceptance-UOW-801.md')], { cwd: root });
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^OK — packet hash/m);
+  assert.match(r.stdout, /^OK \(footer only\) — packet hash/m);
   assert.match(r.stdout, /^SEALED — decision record seq/m);
   assert.match(r.stdout, /^ANCHORED — 2 anchor\(s\), latest .* covering \d+ records/m);
 
