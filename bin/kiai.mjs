@@ -222,7 +222,7 @@ export const GENERIC_CONTRACT = {
 const CURSOR_HOOK_WARNING = [
   'MEASURED LIVE on 2026-09-19 (Cursor 3.21.13, Windows): the hooks fire on every shell command. The first two live',
   'runs still let `git reset --hard` through — Cursor prefixes the payload with a UTF-8 BOM and the translator saw "{}".',
-  'Fixed in 0.7.2 (BOM stripped; replay of the byte-exact payload now denies). A live run WITH the fix is still owed. The translator is permissive: it maps what it',
+  'Fixed in 0.7.2 and MEASURED LIVE with the fix (third session: git status recorded, git reset --hard DENIED, HEAD not moved). The translator is permissive: it maps what it',
   'recognises, records an `unknown` tool for what it does not, ALWAYS answers {"permission":"allow"}',
   'unless a `block` rule matches, and never exits non-zero — a translator must not be the reason',
   'Cursor stops working. If you have Cursor, run one session and `kiai status`: records mean it fired.',

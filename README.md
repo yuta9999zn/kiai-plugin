@@ -20,7 +20,7 @@ verify it, and you can turn it into an evidence report for a code review or a cl
 | **Claude Code** | hooks, live, while the agent works | first-hand: each record is written before the agent's next step | real sessions, Claude Code 2.1.260 / 2.1.261; marketplace install on a clean machine |
 | **Any model with a shell** — Qwen, Llama, GPT, LM Studio, vLLM, OpenAI-compatible | `kiai wrap` around every command the model asks for: record → rules → run → record | first-hand, **and** a `block` rule refuses the command before it runs | `qwen2.5:7b` behind Ollama, 2026-09-18: `git reset --hard` refused, 6 records, verify green |
 | **Codex CLI** | `kiai import codex`, after the fact, from the session log Codex writes anyway | **weaker** — read back from a file the agent itself wrote; nothing is blocked; see [What `import` proves](#what-import-proves-and-what-it-does-not) | end to end on live `codex exec` runs of **0.153.4**; 85 real rollouts, idempotent |
-| **Cursor** | a hook translator (`adapters/cursor/`) that fails safe — or, since Cursor also runs Claude-style hooks, the plugin's own `record` | **measured live** — Cursor 3.21.13 fires the hooks on every shell command (2 live sessions, 2026-09-19). The first two runs let `git reset --hard` through: Cursor writes the payload with a UTF-8 BOM, the translator parsed `{}` and answered allow. Fixed in 0.7.2 (replay of the byte-exact payload: status recorded, reset denied). A live run WITH the fix is still owed | Cursor's hooks log + the probe repository's `.kiai/flight/errors.log` (`Unexpected token '\uFEFF'`); TS-130-18/20/21 replay the live payloads byte for byte |
+| **Cursor** | a hook translator (`adapters/cursor/`) that fails safe — or, since Cursor also runs Claude-style hooks, the plugin's own `record` | **measured live** — Cursor 3.21.13 fires the hooks on every shell command (2 live sessions, 2026-09-19). The first two runs let `git reset --hard` through: Cursor writes the payload with a UTF-8 BOM, the translator parsed `{}` and answered allow. Fixed in 0.7.2 and measured live with the fix — seen live, 2026-09-19, Cursor 3.21.13: `git status --short` recorded, `git reset --hard HEAD~1` **denied** by `safety/no-hard-reset-over-uncommitted-work`, the agent reported *HEAD was not moved*, the commit survived | Cursor's hooks log + the probe repository's `.kiai/flight/errors.log` (`Unexpected token '\uFEFF'`); TS-130-18/20/21 replay the live payloads byte for byte |
 
 Codex has its own hook engine, and it looks close enough to Claude's to reuse: `hooks` is a stable feature
 in Codex CLI 0.153.4 and its hook payload carries the same field names (`session_id`, `cwd`,
@@ -576,7 +576,7 @@ the lock (measured 2026-09-18: a marketplace install had the `rules` command and
 | Claude Code | **measured** | marketplace install on a clean machine; hooks fire |
 | Codex CLI `import` | **measured** | 85 real rollouts, idempotent |
 | any model via `wrap` | **measured** | `qwen2.5:7b`: 3 calls, `git reset --hard` refused, model explained why; 6 records, verify green |
-| Cursor | **measured live** | 3.21.13 fires the hooks; BOM bug found live and fixed in 0.7.2; a live run with the fix still owed |
+| Cursor | **measured live** | 3.21.13 fires the hooks; BOM bug found live, fixed in 0.7.2, and the fix measured live: `reset --hard` denied, HEAD not moved |
 
 Commands per agent: [Pick your agent](#pick-your-agent--what-to-run-step-by-step) at the top. Full walkthrough, update / fix / uninstall: **[docs/HANDOFF.md](docs/HANDOFF.md)** (Vietnamese).
 Every adapter directory carries its own README (a test holds this): `adapters/generic/`, `adapters/ollama/`, `adapters/codex/`, `adapters/cursor/`.
@@ -596,7 +596,7 @@ call it — but the only hook system it has been seen working with is Claude Cod
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.2)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.3)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).

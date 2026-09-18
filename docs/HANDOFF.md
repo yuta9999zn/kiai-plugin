@@ -21,7 +21,7 @@ Gửi dev **đúng một dòng**: `https://github.com/yuta9999zn/kiai-plugin` �
 | **Codex CLI** | `kiai import codex` đọc rollout Codex đã ghi sẵn | **ĐÃ ĐO** | UOW-124: 85 rollout thật, 30 record nhập, chạy lần 2 nhập 0 |
 | Codex CLI — hook | `kiai hooks --agent codex` | **CHƯA XÁC NHẬN** | 3 cấu hình thử 2026-09-17, không cái nào nổ |
 | **Model bất kỳ** (Qwen, Llama, GPT qua API, LM Studio, vLLM…) | harness gọi `kiai wrap` cho mỗi tool call | **ĐÃ ĐO — có giới hạn** | `qwen2.5:7b` qua Ollama, 2026-09-18: `git reset --hard` viết trần **bị chặn**, model đọc lý do và tự giải thích lại; 6 record, `verify` xanh. **Nhưng** luật so khớp **chuỗi lệnh**: cùng lệnh viết bằng biến + `eval`, hay `git -c alias.x='reset --hard' x`, **đi lọt và phá dữ liệu thật** (đo 18/09, review vòng 1). Cái không vòng qua được là **snapshot** cây làm việc `wrap` chụp trước mỗi lệnh — xem §5 |
-| **Cursor** | `.cursor/hooks.json` → script dịch payload; **hoặc** hook plugin Claude (Cursor tự chạy) | **ĐÃ ĐO PHIÊN SỐNG — có lỗi, đã vá, chờ đo lại** | 19/09, Cursor 3.21.13: hook **nổ** ở mọi lệnh shell (2 phiên). Hai lần đầu **cho qua `git reset --hard`** vì Cursor đặt BOM UTF-8 trước payload ⇒ script đọc ra `{}` ⇒ allow, lệnh chạy thật. 0.7.2 bỏ BOM; replay đúng byte: `status` ghi, `reset` bị **deny** (TS-130-20). Chặn trong phiên sống với bản vá: **chưa thấy** |
+| **Cursor** | `.cursor/hooks.json` → script dịch payload; **hoặc** hook plugin Claude (Cursor tự chạy) | **ĐÃ ĐO PHIÊN SỐNG — kể cả bản vá** | 19/09, Cursor 3.21.13: hook **nổ** ở mọi lệnh shell (2 phiên). Hai lần đầu **cho qua `git reset --hard`** vì Cursor đặt BOM UTF-8 trước payload ⇒ script đọc ra `{}` ⇒ allow, lệnh chạy thật. 0.7.2 bỏ BOM; replay đúng byte: `status` ghi, `reset` bị **deny** (TS-130-20). Phiên thứ ba với 0.7.2: `status` ghi, `reset --hard` **bị deny**, agent báo *HEAD was not moved*, commit còn nguyên |
 
 ## 2. Việc chung cho mọi tác tử: repo của dev phải có hộp đen
 
@@ -115,7 +115,7 @@ OK — 6 records · session qwen-measure-1 · tools {"Bash":3}
 
 Dùng endpoint khác: copy `harness.mjs`, đổi `fetch` sang định dạng chat của endpoint đó, **giữ nguyên `runThroughKiai`** — hàm ấy là toàn bộ phần tích hợp. Hợp đồng payload để tự ghi không qua `wrap`: `kiai hooks --agent generic`.
 
-## 6. Cursor — ĐÃ ĐO PHIÊN SỐNG (0.7.2)
+## 6. Cursor — ĐÃ ĐO PHIÊN SỐNG, KỂ CẢ BẢN VÁ (0.7.2+)
 
 ```bash
 kiai hooks --agent cursor > .cursor/hooks.json     # in kèm cảnh báo UNVERIFIED trên stderr, đúng ý
@@ -127,7 +127,7 @@ Script `adapters/cursor/kiai-cursor-hook.mjs` dịch `beforeShellExecution` / `b
 
 **Đường thứ hai, đo cùng lúc:** Cursor tự chạy cả hook của **plugin Claude Code** đã cài (`record PreToolUse` từ `~/.claude/plugins/cache/kiai/…`), với cwd = thư mục plugin và `cwd: ""` trong payload. 0.7.1 nói *"no .kiai/ above <plugin dir>; nothing recorded"*; 0.7.2 lấy repo từ `workspace_roots` (đường dẫn URI `/d:/…`) và hiểu `Shell`/`preToolUse` ⇒ dev có plugin KIAI cho Claude Code được ghi cả phiên Cursor **không cần** `.cursor/hooks.json`. Muốn **chặn** trong Cursor thì vẫn cần hook `beforeShellExecution` (script dịch) — hook `preToolUse` kiểu Claude trong Cursor 3.21 có hỗ trợ `permission: deny` nhưng chưa đo.
 
-**Chưa đo:** một phiên sống **với bản vá** (deny thật sự dừng lệnh trong Cursor). Cách đo: cùng repo thăm dò, cùng đề bài, rồi `kiai status` + `git log` (commit `kiai` phải còn).
+**Phiên thứ ba, với bản vá (19/09):** `git status --short` ghi đúng lệnh (record 24), `git reset --hard HEAD~1` ghi (record 25) và **bị deny** — log Cursor: `"permission": "deny"`, `user_message: KIAI: blocked by safety/no-hard-reset-over-uncommitted-work`; agent trả lời *"HEAD was not moved"*; `git log` vẫn `58dd6de kiai`. **Chưa đo:** hook `preToolUse` kiểu Claude trong Cursor có dừng lệnh khi trả `deny` không (đường plugin chỉ mới đo phần ghi).
 
 ## 7. Cập nhật · sửa lỗi · gỡ
 

@@ -402,7 +402,7 @@ test('TS-130-09 cursor hook never breaks the editor: junk, unknown events and no
 test('TS-130-10 hooks --agent cursor prints a hooks.json pointing every event at the translator, and says what is still unmeasured', async () => {
   const r = await cli(['hooks', '--agent', 'cursor'], { cwd: PLUGIN });
   assert.equal(r.code, 0);
-  assert.match(r.stderr, /A live run WITH the fix is still owed/, 'what is still unmeasured says so, on every run');
+  assert.match(r.stderr, /MEASURED LIVE with the fix/, 'the warning carries the measured status, on every run');
   const j = JSON.parse(r.stdout);
   assert.deepEqual(Object.keys(j.hooks).sort(), ['afterFileEdit', 'beforeMCPExecution', 'beforeShellExecution', 'stop']);
   for (const [ev, list] of Object.entries(j.hooks)) {
