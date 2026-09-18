@@ -21,7 +21,7 @@ Gửi dev **đúng một dòng**: `https://github.com/yuta9999zn/kiai-plugin` �
 | **Codex CLI** | `kiai import codex` đọc rollout Codex đã ghi sẵn | **ĐÃ ĐO** | UOW-124: 85 rollout thật, 30 record nhập, chạy lần 2 nhập 0 |
 | Codex CLI — hook | `kiai hooks --agent codex` | **CHƯA XÁC NHẬN** | 3 cấu hình thử 2026-09-17, không cái nào nổ |
 | **Model bất kỳ** (Qwen, Llama, GPT qua API, LM Studio, vLLM…) | harness gọi `kiai wrap` cho mỗi tool call | **ĐÃ ĐO — có giới hạn** | `qwen2.5:7b` qua Ollama, 2026-09-18: `git reset --hard` viết trần **bị chặn**, model đọc lý do và tự giải thích lại; 6 record, `verify` xanh. **Nhưng** luật so khớp **chuỗi lệnh**: cùng lệnh viết bằng biến + `eval`, hay `git -c alias.x='reset --hard' x`, **đi lọt và phá dữ liệu thật** (đo 18/09, review vòng 1). Cái không vòng qua được là **snapshot** cây làm việc `wrap` chụp trước mỗi lệnh — xem §5 |
-| **Cursor** | `.cursor/hooks.json` → script dịch payload | **ĐO NỬA** | 19/09 cài Cursor 3.19.7: nó **nạp 4 hook** của KIAI (log của Cursor); hình dạng payload lấy từ **chính mã Cursor**, adapter ăn đúng hình dạng ấy (TS-130-17: ghi record, `reset --hard` ⇒ `deny`, không lọt `user_email`). **Chưa thấy hook nổ trong phiên agent sống** — cần tài khoản Cursor đăng nhập |
+| **Cursor** | `.cursor/hooks.json` → script dịch payload; **hoặc** hook plugin Claude (Cursor tự chạy) | **ĐÃ ĐO PHIÊN SỐNG — có lỗi, đã vá, chờ đo lại** | 19/09, Cursor 3.21.13: hook **nổ** ở mọi lệnh shell (2 phiên). Hai lần đầu **cho qua `git reset --hard`** vì Cursor đặt BOM UTF-8 trước payload ⇒ script đọc ra `{}` ⇒ allow, lệnh chạy thật. 0.7.2 bỏ BOM; replay đúng byte: `status` ghi, `reset` bị **deny** (TS-130-20). Chặn trong phiên sống với bản vá: **chưa thấy** |
 
 ## 2. Việc chung cho mọi tác tử: repo của dev phải có hộp đen
 
@@ -115,7 +115,7 @@ OK — 6 records · session qwen-measure-1 · tools {"Bash":3}
 
 Dùng endpoint khác: copy `harness.mjs`, đổi `fetch` sang định dạng chat của endpoint đó, **giữ nguyên `runThroughKiai`** — hàm ấy là toàn bộ phần tích hợp. Hợp đồng payload để tự ghi không qua `wrap`: `kiai hooks --agent generic`.
 
-## 6. Cursor — ĐO NỬA
+## 6. Cursor — ĐÃ ĐO PHIÊN SỐNG (0.7.2)
 
 ```bash
 kiai hooks --agent cursor > .cursor/hooks.json     # in kèm cảnh báo UNVERIFIED trên stderr, đúng ý
@@ -123,9 +123,11 @@ kiai hooks --agent cursor > .cursor/hooks.json     # in kèm cảnh báo UNVERIF
 
 Script `adapters/cursor/kiai-cursor-hook.mjs` dịch `beforeShellExecution` / `beforeMCPExecution` / `afterFileEdit` / `stop` sang record KIAI; lệnh trúng luật `block` ⇒ trả `{"permission":"deny"}` kèm lý do. Nó **luôn** trả `allow` cho mọi thứ khác và **không bao giờ** exit ≠ 0 — script dịch không được là lý do editor ngừng chạy.
 
-**Đã đo 19/09 (Cursor 3.19.7 cài thật):** Cursor nạp đúng 4 hook từ tệp này (log: *Loaded 4 project hook(s)*); payload nó gửi hook là `{…sự kiện, session_id, hook_event_name, cursor_version, workspace_roots, user_email, transcript_path}` — đọc từ bundle của Cursor, `workspace_roots` là đường dẫn URI (`/d:/tmp/repo` trên Windows) nên adapter ưu tiên `cwd` rồi mới chuẩn hoá `workspace_roots`; `user_email` không bao giờ vào record. Cursor 3.19.7 còn đọc cả `.claude/settings.json` (tương thích hook Claude Code, bật mặc định) — đường thứ hai, chưa kiểm.
+**Đã đo 19/09 — hai phiên agent sống trên Cursor 3.21.13 (Windows):** hook nổ ở mọi lệnh shell (log Hooks Service của Cursor: *Executing hook 1/1 from project config … beforeShellExecution*). **Nhưng cả hai lần `git reset --hard HEAD~1` đều được cho qua và đã chạy** — record ghi `command: ""`. Nguyên nhân, đọc từ `.kiai/flight/errors.log` của repo thăm dò: Cursor viết payload với **BOM UTF-8** (`EF BB BF`) ⇒ `JSON.parse` từ chối ⇒ script thấy `{}` ⇒ `allow`. 0.7.2 bỏ BOM (cả CLI lẫn script); replay đúng byte payload sống: `status` ghi đúng lệnh, `reset` ⇒ `{"permission":"deny"}` (TS-130-20). Cần **0.7.2+**; bản cũ hơn cho qua mọi thứ trong Cursor.
 
-**Nửa còn thiếu — hook NỔ trong phiên agent sống — cần một Cursor đã đăng nhập:** mở repo có `.cursor/hooks.json`, hỏi agent *"chạy git status rồi git reset --hard HEAD~1"*, rồi `kiai status`. Có record ⇒ hook nổ. Không có ⇒ `KIAI_CURSOR_DEBUG=1` in payload nhận được ra stderr; gửi lại **một payload đã che dữ liệu** là đủ để sửa bảng ánh xạ.
+**Đường thứ hai, đo cùng lúc:** Cursor tự chạy cả hook của **plugin Claude Code** đã cài (`record PreToolUse` từ `~/.claude/plugins/cache/kiai/…`), với cwd = thư mục plugin và `cwd: ""` trong payload. 0.7.1 nói *"no .kiai/ above <plugin dir>; nothing recorded"*; 0.7.2 lấy repo từ `workspace_roots` (đường dẫn URI `/d:/…`) và hiểu `Shell`/`preToolUse` ⇒ dev có plugin KIAI cho Claude Code được ghi cả phiên Cursor **không cần** `.cursor/hooks.json`. Muốn **chặn** trong Cursor thì vẫn cần hook `beforeShellExecution` (script dịch) — hook `preToolUse` kiểu Claude trong Cursor 3.21 có hỗ trợ `permission: deny` nhưng chưa đo.
+
+**Chưa đo:** một phiên sống **với bản vá** (deny thật sự dừng lệnh trong Cursor). Cách đo: cùng repo thăm dò, cùng đề bài, rồi `kiai status` + `git log` (commit `kiai` phải còn).
 
 ## 7. Cập nhật · sửa lỗi · gỡ
 

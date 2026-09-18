@@ -309,6 +309,81 @@ test('TS-130-17 cursor hook on the payload shape Cursor 3.19.7 really sends: roo
   assert.doesNotMatch(raw, /t\.jsonl/, 'nor the transcript path');
 });
 
+test('TS-130-18 kiai record and rules check --stdin on the payload Cursor 3.21.13 really sends its Claude-style hooks: cwd "", plugin dir as process cwd, tool "Shell", event "preToolUse"', needGit, async () => {
+  // Measured 2026-09-19 in Cursor's hooks log: "Running script in directory: <plugin cache dir>",
+  // payload {cwd: "", tool_name: "Shell", hook_event_name: "preToolUse", workspace_roots: ["/d:/tmp/repo"]}.
+  // The recorder then said "no .kiai/ above <plugin dir>; nothing recorded" — for every call.
+  const root = await freshRepo();
+  const uriPath = process.platform === 'win32' ? '/' + root.replace(/\\/g, '/') : root;
+  const elsewhere = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'kiai-plugin-dir-')));
+  const payload = (command, id) => JSON.stringify({ conversation_id: 'conv-live', generation_id: id, model: 'grok-4.6', tool_name: 'Shell', tool_input: { command, cwd: '', timeout: 30000 }, tool_use_id: id, cwd: '', session_id: 'conv-live', hook_event_name: 'preToolUse', cursor_version: '3.21.13', workspace_roots: [uriPath], user_email: 'someone@example.com', transcript_path: null });
+  // Cursor 3.21.13 on Windows prefixes the payload with a UTF-8 BOM (bytes EF BB BF) — measured in the probe's
+  // errors.log: `bad hook payload: Unexpected token '\uFEFF'`. Every payload below carries it.
+  const BOM = '\uFEFF';
+  const r = await cli(['record', 'PreToolUse'], { cwd: elsewhere, input: BOM + payload('git status --short', 'u1') });
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.stderr, /nothing recorded/, 'the payload names the repository; the process cwd does not matter');
+  const recs = readAll(root).filter((x) => x.session === 'conv-live');
+  assert.equal(recs.length, 1);
+  assert.equal(recs[0].event, 'tool_call', 'preToolUse is PreToolUse');
+  assert.equal(recs[0].tool, 'Bash', 'Cursor\'s "Shell" is the shell');
+  assert.equal(recs[0].input.command, 'git status --short');
+  const c = await cli(['rules', 'check', '--stdin'], { cwd: elsewhere, input: BOM + payload('git reset --hard HEAD~1', 'u2') });
+  assert.equal(c.code, 2, 'the rules of the repository in the payload apply, not those of the process cwd: ' + c.stderr);
+  assert.match(c.stderr, /safety\/no-hard-reset-over-uncommitted-work/);
+  const ok = await cli(['rules', 'check', '--stdin'], { cwd: elsewhere, input: BOM + payload('git status', 'u3') });
+  assert.equal(ok.code, 0);
+});
+
+test('TS-130-20 cursor hook on the byte-exact live payload of 2026-09-19 (BOM + cwd "" + URI workspace root): git status recorded, git reset --hard DENIED', needGit, async () => {
+  // Replay of what Cursor 3.21.13 sent to `kiai-cursor-hook.mjs beforeShellExecution` in the probe repository —
+  // copied from its hooks log (INPUT block), plus the UTF-8 BOM the log does not show but errors.log proved.
+  // Before the BOM fix this exact input produced {"permission":"allow"} for the reset, and the reset ran.
+  const root = await freshRepo();
+  const uriPath = process.platform === 'win32' ? '/' + root.replace(/\\/g, '/') : root;
+  const live = (command, gen) => '\uFEFF' + JSON.stringify({
+    conversation_id: 'd0d5174b-39ed-490e-b271-3960bdc0686c', generation_id: gen, model: 'grok-4.6', command, cwd: '', sandbox: false,
+    session_id: 'd0d5174b-39ed-490e-b271-3960bdc0686c', hook_event_name: 'beforeShellExecution', cursor_version: '3.21.13',
+    workspace_roots: [uriPath], user_email: 'someone@example.com', transcript_path: null,
+  }, null, 2);
+  const a = await run(CURSOR, ['beforeShellExecution'], { cwd: root, input: live('git status --short', 'cf882022-1') });
+  assert.deepEqual(JSON.parse(a.stdout), { permission: 'allow' });
+  const b = await run(CURSOR, ['beforeShellExecution'], { cwd: root, input: live('git reset --hard HEAD~1', 'cf882022-2') });
+  const j = JSON.parse(b.stdout);
+  assert.equal(j.permission, 'deny', 'this is the call that was allowed on 2026-09-19');
+  assert.match(j.agent_message, /safety\/no-hard-reset-over-uncommitted-work/);
+  const recs = readAll(root).filter((x) => x.session === 'd0d5174b-39ed-490e-b271-3960bdc0686c');
+  assert.deepEqual(recs.map((x) => x.input.command), ['git status --short', 'git reset --hard HEAD~1'], 'both commands recorded with their real text, not ""');
+  assert.ok(!fs.existsSync(path.join(root, '.kiai', 'flight', 'errors.log')) || !/empty or unparseable/.test(fs.readFileSync(path.join(root, '.kiai', 'flight', 'errors.log'), 'utf8')), 'no "unparseable stdin" entry');
+});
+
+test('TS-130-21 kiai record and rules check --stdin accept Cursor\'s NATIVE hook payload (beforeShellExecution, command at top level, BOM) — no translator needed', needGit, async () => {
+  const root = await freshRepo();
+  const uriPath = process.platform === 'win32' ? '/' + root.replace(/\\/g, '/') : root;
+  const elsewhere = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'kiai-plugin-dir-')));
+  const native = (command) => '\uFEFF' + JSON.stringify({ conversation_id: 'nat-1', generation_id: 'g', model: 'grok-4.6', command, cwd: '', sandbox: false, session_id: 'nat-1', hook_event_name: 'beforeShellExecution', cursor_version: '3.21.13', workspace_roots: [uriPath], user_email: 'someone@example.com', transcript_path: null });
+  const r = await cli(['record', 'PreToolUse'], { cwd: elsewhere, input: native('git status --short') });
+  assert.equal(r.code, 0);
+  const recs = readAll(root).filter((x) => x.session === 'nat-1');
+  assert.equal(recs.length, 1);
+  assert.equal(recs[0].event, 'tool_call');
+  assert.equal(recs[0].tool, 'Bash');
+  assert.equal(recs[0].input.command, 'git status --short');
+  const c = await cli(['rules', 'check', '--stdin'], { cwd: elsewhere, input: native('git reset --hard HEAD~1') });
+  assert.equal(c.code, 2, c.stderr);
+});
+
+test('TS-130-19 cursor hook with an EMPTY stdin records nothing, allows, and leaves a line in the error log (the 2026-09-19 failure, made visible)', needGit, async () => {
+  const root = await freshRepo();
+  const before = readAll(root).length;
+  const r = await run(CURSOR, ['beforeShellExecution'], { cwd: root, input: '' });
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { permission: 'allow' }, 'fail-safe: the editor keeps working');
+  assert.equal(readAll(root).length, before, 'no record with command "" — a record that says nothing is worse than none');
+  const log = fs.readFileSync(path.join(root, '.kiai', 'flight', 'errors.log'), 'utf8');
+  assert.match(log, /cursor hook beforeShellExecution: empty or unparseable stdin \(0 bytes\)/);
+});
+
 test('TS-130-09 cursor hook never breaks the editor: junk, unknown events and no repository all answer allow, exit 0', needGit, async () => {
   const root = await freshRepo();
   for (const [ev, input] of [['beforeShellExecution', 'not json'], ['beforeShellExecution', '[1,2]'], ['somethingNew', JSON.stringify({ cwd: root })], ['stop', JSON.stringify({ conversation_id: 'cur-2', cwd: root })]]) {
@@ -327,7 +402,7 @@ test('TS-130-09 cursor hook never breaks the editor: junk, unknown events and no
 test('TS-130-10 hooks --agent cursor prints a hooks.json pointing every event at the translator, and says what is still unmeasured', async () => {
   const r = await cli(['hooks', '--agent', 'cursor'], { cwd: PLUGIN });
   assert.equal(r.code, 0);
-  assert.match(r.stderr, /HALF MEASURED/, 'what is still unmeasured — a live fire — says so, on every run');
+  assert.match(r.stderr, /A live run WITH the fix is still owed/, 'what is still unmeasured says so, on every run');
   const j = JSON.parse(r.stdout);
   assert.deepEqual(Object.keys(j.hooks).sort(), ['afterFileEdit', 'beforeMCPExecution', 'beforeShellExecution', 'stop']);
   for (const [ev, list] of Object.entries(j.hooks)) {

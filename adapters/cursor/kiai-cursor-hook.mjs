@@ -33,7 +33,24 @@ function findRoot(start) {
 }
 
 function readStdin() {
-  try { return process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8'); } catch { return ''; }
+  // Read until EOF and wait out EAGAIN (up to 2 s): the live Cursor run of 2026-09-19 handed this
+  // script an EMPTY stdin on every call, so it recorded three commands as "" and allowed a
+  // `git reset --hard` that then ran. The Cursor log had the full payload; this script never saw it.
+  try { if (process.stdin.isTTY) return ''; } catch { /* read anyway */ }
+  const chunks = []; const buf = Buffer.alloc(65536); const deadline = Date.now() + 2000;
+  for (;;) {
+    let n;
+    try { n = fs.readSync(0, buf, 0, buf.length, null); } catch (e) {
+      if (e.code === 'EAGAIN' && Date.now() < deadline) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20); continue; }
+      break;
+    }
+    if (n === 0) break;
+    chunks.push(Buffer.from(buf.subarray(0, n)));
+  }
+  // Cursor 3.21.13 on Windows writes the payload with a UTF-8 byte-order mark (EF BB BF); JSON.parse
+  // refuses it, and a recorder that then sees "{}" records a command of "" and lets everything through —
+  // measured live on 2026-09-19, twice, with a `git reset --hard` that ran. Strip it.
+  return Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '');
 }
 
 /** Cursor 3.19.7 fills workspace_roots with folder.uri.path — on Windows that is "/d:/tmp/repo", a URI path, not a filesystem path. */
@@ -74,6 +91,14 @@ function main() {
   // does not recognise their payload, and the one thing to attach (redacted) to a bug report.
   if (process.env.KIAI_CURSOR_DEBUG) process.stderr.write(`kiai-cursor-hook ${EVENT}: ${raw.length} bytes, keys=[${Object.keys(h).join(',')}]\n`);
   const rec = translate(EVENT, h);
+  // Nothing usable arrived: say so in the repository's error log, where `kiai status` points, instead
+  // of recording a command of "" and answering allow in silence (that is what happened on 2026-09-19).
+  if (!Object.keys(h).length) {
+    const r0 = findRoot(process.cwd());
+    if (r0) { try { logError(r0, new Error(`cursor hook ${EVENT}: empty or unparseable stdin (${raw.length} bytes) — nothing recorded, action allowed`)); } catch { /* nothing left to do */ } }
+    process.stdout.write('{"permission":"allow"}\n');
+    return;
+  }
   // The payload's cwd first; the process cwd as a fallback (Cursor runs hooks inside the workspace).
   // A cwd this process cannot resolve — a POSIX path handed to a Windows node — must not silently
   // turn into "no repository here": that is exactly how a probe on 2026-09-18 lost every record.

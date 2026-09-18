@@ -64,12 +64,68 @@ function parseArgs(argv) {
 }
 
 function readStdin() {
+  // A hook host may hand over a pipe that is not readable yet (EAGAIN) or that closes early; one
+  // readFileSync(0) then returns nothing and a recorder that saw nothing records nothing — the live
+  // Cursor run of 2026-09-19 wrote three records with an empty command that way. Read until EOF,
+  // waiting out EAGAIN for up to two seconds.
   try {
     if (process.stdin.isTTY) return '';
-    return fs.readFileSync(0, 'utf8');
-  } catch {
-    return '';
+  } catch { /* no tty info: read anyway */ }
+  const chunks = [];
+  const buf = Buffer.alloc(65536);
+  const deadline = Date.now() + 2000;
+  for (;;) {
+    let n;
+    try {
+      n = fs.readSync(0, buf, 0, buf.length, null);
+    } catch (e) {
+      if (e.code === 'EAGAIN' && Date.now() < deadline) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20); continue; }
+      if (e.code === 'EOF') break;
+      break;
+    }
+    if (n === 0) break;
+    chunks.push(Buffer.from(buf.subarray(0, n)));
   }
+  // Cursor 3.21.13 on Windows writes the payload with a UTF-8 byte-order mark (EF BB BF); JSON.parse
+  // refuses it, and a recorder that then sees "{}" records a command of "" and lets everything through —
+  // measured live on 2026-09-19, twice, with a `git reset --hard` that ran. Strip it.
+  return Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, '');
+}
+
+/** Cursor (3.19+) fills workspace_roots with folder.uri.path — "/d:/tmp/repo" on Windows, a URI path. */
+function fromUriPath(p) {
+  const s = String(p || '');
+  return /^\/[A-Za-z]:\//.test(s) ? s.slice(1) : s;
+}
+
+/** Where the hook payload says the work is: its cwd, else its first workspace root, else the process cwd.
+ *  Cursor runs Claude-style hooks with the PLUGIN directory as cwd and `cwd: ""` in the payload (measured
+ *  2026-09-19, Cursor 3.21.13), so a recorder that trusts process.cwd records nothing. */
+function hostStart(payload, fallback) {
+  if (payload && typeof payload.cwd === 'string' && payload.cwd && fs.existsSync(payload.cwd)) return payload.cwd;
+  const roots = payload && Array.isArray(payload.workspace_roots) ? payload.workspace_roots : [];
+  for (const r of roots) { const p = fromUriPath(r); if (p && fs.existsSync(p)) return p; }
+  return fallback;
+}
+
+/** Cursor names hook events in camelCase (preToolUse) and its shell tool "Shell"; the chain vocabulary is Claude's. */
+const CURSOR_EVENT = { preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', postToolUseFailure: 'PostToolUseFailure', sessionStart: 'SessionStart', sessionEnd: 'SessionEnd', stop: 'Stop', subagentStop: 'SubagentStop', beforeSubmitPrompt: 'UserPromptSubmit', preCompact: 'PreCompact',
+  // Cursor's own hook names (a project .cursor/hooks.json pointing straight at `kiai record` / `rules check --stdin`)
+  beforeShellExecution: 'PreToolUse', afterShellExecution: 'PostToolUse', beforeMCPExecution: 'PreToolUse', afterMCPExecution: 'PostToolUse', afterFileEdit: 'PostToolUse', beforeReadFile: 'PreToolUse' };
+function normalizeHost(payload) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const ev = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : '';
+  if (ev === 'beforeShellExecution' || ev === 'afterShellExecution') {
+    // native shell events carry `command` at the top level and no tool name
+    if (!payload.tool_name) payload.tool_name = 'Bash';
+    if (!payload.tool_input && typeof payload.command === 'string') payload.tool_input = { command: payload.command };
+  } else if (ev === 'afterFileEdit') {
+    if (!payload.tool_name) payload.tool_name = 'Edit';
+    if (!payload.tool_input && typeof payload.file_path === 'string') payload.tool_input = { file_path: payload.file_path };
+  }
+  if (CURSOR_EVENT[ev]) payload.hook_event_name = CURSOR_EVENT[ev];
+  if (payload.tool_name === 'Shell') payload.tool_name = 'Bash';
+  return payload;
 }
 
 /** Walk up from `start` to the nearest directory containing .kiai/ or .git/. Returns null if there is none. */
@@ -164,9 +220,9 @@ export const GENERIC_CONTRACT = {
 };
 
 const CURSOR_HOOK_WARNING = [
-  'HALF MEASURED. Cursor 3.19.7 loads this file (its hooks log: "Loaded 4 project hook(s)", 2026-09-19)',
-  'and the payload shape the translator expects was read from Cursor\'s own bundle — but no hook has',
-  'been seen FIRING in a live agent turn yet (that needs a signed-in Cursor). The translator is permissive: it maps what it',
+  'MEASURED LIVE on 2026-09-19 (Cursor 3.21.13, Windows): the hooks fire on every shell command. The first two live',
+  'runs still let `git reset --hard` through — Cursor prefixes the payload with a UTF-8 BOM and the translator saw "{}".',
+  'Fixed in 0.7.2 (BOM stripped; replay of the byte-exact payload now denies). A live run WITH the fix is still owed. The translator is permissive: it maps what it',
   'recognises, records an `unknown` tool for what it does not, ALWAYS answers {"permission":"allow"}',
   'unless a `block` rule matches, and never exits non-zero — a translator must not be the reason',
   'Cursor stops working. If you have Cursor, run one session and `kiai status`: records mean it fired.',
@@ -300,7 +356,8 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
           try { payload = JSON.parse(raw); } catch (e) { badPayload = new Error('bad hook payload: ' + e.message); }
         }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) { badPayload = badPayload || new Error('bad hook payload: not an object'); payload = {}; }
-        const start = typeof payload.cwd === 'string' && fs.existsSync(payload.cwd) ? payload.cwd : cwd;
+        normalizeHost(payload);
+        const start = hostStart(payload, cwd);
         target = findRoot(start);
         if (!target) {
           // Not inside any repo: do not create .kiai somewhere surprising.
@@ -467,7 +524,7 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
       // questionnaire decides; this explains" — and for the same reason: once a model is allowed to
       // decide whether a rule was broken, the rule is back to being advice.
       const sub = args._[1];
-      const { rules, problems, dir, present } = loadRules(root);
+      let { rules, problems, dir, present } = loadRules(root);
       const rel = path.relative(root, dir).replace(/\\/g, '/') || RULES_DIR;
       const txt = (o, lang) => (o && (lang === 'vi' ? (o.vi || o.en) : (o.en || o.vi))) || '';
       // `cell` escapes for a markdown table (| becomes \| , * becomes a lookalike, ` becomes ').
@@ -486,7 +543,8 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
         for (const n of r.skipped) stdout.write(`kept     ${rel}/${n} (exists; --force to overwrite — it is reviewed like code)\n`);
         return 0;
       }
-      if (!present && sub !== 'lint') {
+      // `check --stdin` decides after reading the payload: the rules that apply live in the repository it names.
+      if (!present && sub !== 'lint' && !(sub === 'check' && args.stdin)) {
         stderr.write(`kiai rules: no ${rel}/ in this repository — there are no rules here to follow\n`);
         return 2;
       }
@@ -573,7 +631,13 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
             // ever needed rather than inventing a schema the payload does not have.
             const payload = readStdin();
             try {
-              const h = JSON.parse(payload || '{}');
+              const h = normalizeHost(JSON.parse(payload || '{}'));
+              // The host may run this hook from somewhere else (Cursor: the plugin directory) — the
+              // rules that apply are the ones in the repository the payload points at.
+              const hostRoot = findRoot(hostStart(h, cwd));
+              if (hostRoot && hostRoot !== root) ({ rules, problems, present } = loadRules(hostRoot));
+              if (!present) { stderr.write(`kiai rules check --stdin: no ${rel}/ in ${hostRoot || root}; nothing to enforce, letting the action through
+`); return 0; }
               if (h.tool_name) action.tool = String(h.tool_name);
               if (h.hook_event_name) action.event = String(h.hook_event_name);
               const ti = h.tool_input || {};

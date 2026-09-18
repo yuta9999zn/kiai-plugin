@@ -20,7 +20,7 @@ verify it, and you can turn it into an evidence report for a code review or a cl
 | **Claude Code** | hooks, live, while the agent works | first-hand: each record is written before the agent's next step | real sessions, Claude Code 2.1.260 / 2.1.261; marketplace install on a clean machine |
 | **Any model with a shell** — Qwen, Llama, GPT, LM Studio, vLLM, OpenAI-compatible | `kiai wrap` around every command the model asks for: record → rules → run → record | first-hand, **and** a `block` rule refuses the command before it runs | `qwen2.5:7b` behind Ollama, 2026-09-18: `git reset --hard` refused, 6 records, verify green |
 | **Codex CLI** | `kiai import codex`, after the fact, from the session log Codex writes anyway | **weaker** — read back from a file the agent itself wrote; nothing is blocked; see [What `import` proves](#what-import-proves-and-what-it-does-not) | end to end on live `codex exec` runs of **0.153.4**; 85 real rollouts, idempotent |
-| **Cursor** | a hook translator (`adapters/cursor/`) that fails safe | **half measured** — Cursor 3.19.7 loads the hooks and the translator reads the payload shape taken from Cursor's own bundle; not yet seen firing in a live agent turn | Cursor 3.19.7, 2026-09-19: `Loaded 4 project hook(s)` in its hooks log; TS-130-17 on the code-derived payload. Firing needs a signed-in account (§ below) |
+| **Cursor** | a hook translator (`adapters/cursor/`) that fails safe — or, since Cursor also runs Claude-style hooks, the plugin's own `record` | **measured live** — Cursor 3.21.13 fires the hooks on every shell command (2 live sessions, 2026-09-19). The first two runs let `git reset --hard` through: Cursor writes the payload with a UTF-8 BOM, the translator parsed `{}` and answered allow. Fixed in 0.7.2 (replay of the byte-exact payload: status recorded, reset denied). A live run WITH the fix is still owed | Cursor's hooks log + the probe repository's `.kiai/flight/errors.log` (`Unexpected token '\uFEFF'`); TS-130-18/20/21 replay the live payloads byte for byte |
 
 Codex has its own hook engine, and it looks close enough to Claude's to reuse: `hooks` is a stable feature
 in Codex CLI 0.153.4 and its hook payload carries the same field names (`session_id`, `cwd`,
@@ -45,7 +45,7 @@ Then one of these. `kiai` below means `node ~/kiai-plugin/bin/kiai.mjs` (alias i
 | **Claude Code** | `claude plugin marketplace add yuta9999zn/kiai-plugin` · `claude plugin install kiai@kiai` — hooks are on in every session from then on. Want rules to **block** and not only record? `kiai hooks --rules > .claude/settings.json` | do one small task, then `kiai status` → `records > 0` |
 | **Qwen / Llama / any model** (Ollama, LM Studio, vLLM, OpenAI-compatible) | run the model through a harness that executes every command as `kiai wrap --tool Bash --session <id> -- <command>`. Reference harness, ~100 lines, zero deps: `OLLAMA_MODEL=qwen2.5:7b node ~/kiai-plugin/adapters/ollama/harness.mjs "…"`. Other endpoint: copy it, change the `fetch`, keep `runThroughKiai` | ask the model for `git reset --hard` → `BLOCKED BY safety/…`, exit 2, not run; `kiai verify` green |
 | **Codex CLI** | after each session (or cron): `kiai import codex` — reads the rollouts Codex already writes; idempotent. Nothing is blocked (it happens after the fact); for a gate, drive Codex through `kiai wrap` like any model | `kiai import codex --dry-run` shows what it sees; `kiai verify` |
-| **Cursor** | `kiai hooks --agent cursor > .cursor/hooks.json` (prints a HALF MEASURED warning on purpose: Cursor 3.19.7 loads it, a live fire is still unseen). The translator always answers `allow` except on a `block` rule, and never exits ≠ 0 | run a session, `kiai status`; no records → `KIAI_CURSOR_DEBUG=1` prints the payload on stderr — send one redacted payload back and the mapping gets fixed |
+| **Cursor** | `kiai hooks --agent cursor > .cursor/hooks.json` — needs **0.7.2+** (older translators parse Cursor's BOM-prefixed payload as `{}` and allow everything). The translator always answers `allow` except on a `block` rule, and never exits ≠ 0. Cursor also runs the Claude Code plugin's hooks if the plugin is installed, so `kiai record` sees the session even without this file | run a session, `kiai status`; no records → `KIAI_CURSOR_DEBUG=1` prints the payload on stderr — send one redacted payload back and the mapping gets fixed |
 
 Update: `claude plugin update kiai@kiai` or `git -C ~/kiai-plugin pull`; new rules without overwriting yours: `kiai rules install`
 (`--force` to take the plugin's copy); broken rule after a hand edit: `kiai rules lint` names the file. Uninstall: `claude plugin uninstall kiai@kiai`
@@ -565,7 +565,7 @@ Claude Code gets hooks. Everything else gets the one thing every agent has: a sh
 kiai wrap --tool Bash --session <conversation-id> -- <the command>   # record, ask the rules, run, record
 kiai hooks --agent generic                                          # the 6-field payload contract, to record yourself
 kiai import codex                                                   # Codex CLI: read the rollouts it already writes
-kiai hooks --agent cursor > .cursor/hooks.json                      # Cursor: translator (HALF MEASURED — loaded by 3.19.7, not yet seen firing)
+kiai hooks --agent cursor > .cursor/hooks.json                      # Cursor: translator (fires live on 3.21.13; 0.7.2+ for the BOM fix)
 ```
 
 `kiai init` now seeds the 26 starter rules into `.kiai/rules/`, so a fresh install gets the key and not only
@@ -576,7 +576,7 @@ the lock (measured 2026-09-18: a marketplace install had the `rules` command and
 | Claude Code | **measured** | marketplace install on a clean machine; hooks fire |
 | Codex CLI `import` | **measured** | 85 real rollouts, idempotent |
 | any model via `wrap` | **measured** | `qwen2.5:7b`: 3 calls, `git reset --hard` refused, model explained why; 6 records, verify green |
-| Cursor | **half measured** | Cursor 3.19.7 loads the 4 hooks; payload shape from its bundle; no live fire yet (needs a signed-in account) |
+| Cursor | **measured live** | 3.21.13 fires the hooks; BOM bug found live and fixed in 0.7.2; a live run with the fix still owed |
 
 Commands per agent: [Pick your agent](#pick-your-agent--what-to-run-step-by-step) at the top. Full walkthrough, update / fix / uninstall: **[docs/HANDOFF.md](docs/HANDOFF.md)** (Vietnamese).
 Every adapter directory carries its own README (a test holds this): `adapters/generic/`, `adapters/ollama/`, `adapters/codex/`, `adapters/cursor/`.
@@ -591,12 +591,12 @@ complete: **do not paste secrets into shell commands, and review `.kiai/flight` 
 
 `record` accepts any JSON carrying `hook_event_name`, `tool_name` and `tool_input`, so any hook system can
 call it — but the only hook system it has been seen working with is Claude Code's. For Codex, use
-[`import`](#codex-cli). For Cursor, [`adapters/cursor/`](adapters/cursor/README.md) translates its hooks — loaded by Cursor 3.19.7, not yet seen firing.
+[`import`](#codex-cli). For Cursor, [`adapters/cursor/`](adapters/cursor/README.md) translates its hooks — seen firing live on Cursor 3.21.13.
 
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~35 s, 161 tests (v0.7.1)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.2)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).
