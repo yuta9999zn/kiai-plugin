@@ -239,6 +239,29 @@ test('TS-130-15 a slow snapshot names the cause instead of letting the developer
   assert.doesNotMatch(fast.stderr, /snapshots took/, 'ignored, the tree is small again and the hint goes away');
 });
 
+test('TS-130-16 the public page says, per agent, what to run — and every adapter it names has a README (0.7.0 shipped without adapters/ollama/README.md)', () => {
+  const readme = fs.readFileSync(path.join(PLUGIN, 'README.md'), 'utf8');
+  const pick = readme.slice(readme.indexOf('## Pick your agent'), readme.indexOf('## Install in 10 minutes'));
+  assert.ok(pick.length > 0, 'the per-agent section sits before the install section');
+  for (const [agent, cmd] of [
+    ['Claude Code', 'claude plugin install kiai@kiai'],
+    ['Qwen / Llama / any model', 'kiai wrap --tool Bash --session <id> -- <command>'],
+    ['Codex CLI', 'kiai import codex'],
+    ['Cursor', 'kiai hooks --agent cursor > .cursor/hooks.json'],
+  ]) {
+    const row = pick.split('\n').find((l) => l.startsWith('| **' + agent));
+    assert.ok(row, agent + ' has a row');
+    assert.ok(row.includes(cmd), agent + ' row carries its command: ' + cmd);
+    assert.ok(row.split('|').length >= 5, agent + ' row has a check column');
+  }
+  const adapters = fs.readdirSync(path.join(PLUGIN, 'adapters'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  assert.deepEqual(adapters.sort(), ['codex', 'cursor', 'generic', 'ollama']);
+  for (const a of adapters) {
+    assert.ok(fs.existsSync(path.join(PLUGIN, 'adapters', a, 'README.md')), 'adapters/' + a + '/README.md exists');
+    assert.ok(readme.includes('adapters/' + a + '/README.md'), 'README links adapters/' + a + '/README.md');
+  }
+});
+
 test('TS-130-13 the generic contract lists the same events the plugin hooks do (R1-N)', async () => {
   // Two lists nobody compared: HOOK_EVENTS had 7 entries, the contract retyped 6.
   const c = await cli(['hooks', '--agent', 'generic'], { cwd: PLUGIN });

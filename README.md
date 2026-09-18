@@ -17,9 +17,10 @@ verify it, and you can turn it into an evidence report for a code review or a cl
 
 | Agent | How KIAI records it | Strength of the evidence | Measured against |
 |---|---|---|---|
-| **Claude Code** | hooks, live, while the agent works | first-hand: each record is written before the agent's next step | real sessions, Claude Code 2.1.260 / 2.1.261 |
-| **Codex CLI** | `kiai import codex`, after the fact, from the session log Codex writes anyway | **weaker** — read back from a file the agent itself wrote; see [What `import` proves](#what-import-proves-and-what-it-does-not) | end to end on live `codex exec` runs of **0.153.4**; on the 0.148.x shape through fixtures taken from a real session of that build; the format of all 85 logs on the build machine (7 builds, 0.120 → 0.153.4) was surveyed, not parsed |
-| **Cursor** | not supported | — | nothing. We have no Cursor installation to measure against, and we will not ship an adapter written from documentation alone |
+| **Claude Code** | hooks, live, while the agent works | first-hand: each record is written before the agent's next step | real sessions, Claude Code 2.1.260 / 2.1.261; marketplace install on a clean machine |
+| **Any model with a shell** — Qwen, Llama, GPT, LM Studio, vLLM, OpenAI-compatible | `kiai wrap` around every command the model asks for: record → rules → run → record | first-hand, **and** a `block` rule refuses the command before it runs | `qwen2.5:7b` behind Ollama, 2026-09-18: `git reset --hard` refused, 6 records, verify green |
+| **Codex CLI** | `kiai import codex`, after the fact, from the session log Codex writes anyway | **weaker** — read back from a file the agent itself wrote; nothing is blocked; see [What `import` proves](#what-import-proves-and-what-it-does-not) | end to end on live `codex exec` runs of **0.153.4**; 85 real rollouts, idempotent |
+| **Cursor** | a hook translator (`adapters/cursor/`) that fails safe | **unverified** — written from Cursor's hooks documentation, never seen firing | nothing. No Cursor client on the machine that wrote it; a Cursor user finishes this (§ below) |
 
 Codex has its own hook engine, and it looks close enough to Claude's to reuse: `hooks` is a stable feature
 in Codex CLI 0.153.4 and its hook payload carries the same field names (`session_id`, `cwd`,
@@ -27,6 +28,30 @@ in Codex CLI 0.153.4 and its hook payload carries the same field names (`session
 hook fire**, so this package does not claim hook support for Codex. `kiai hooks --agent codex` prints the
 block we believe is correct with that warning attached. Details in [Codex CLI](#codex-cli).
 
+## Pick your agent — what to run, step by step
+
+Whatever the agent, the repository needs the black box **once** (`init` creates `.kiai/` and seeds the
+26 starter rules; commit it, it is the repository's data):
+
+```bash
+git clone https://github.com/yuta9999zn/kiai-plugin ~/kiai-plugin    # or the marketplace install below; no npm install, zero dependencies
+cd your-repo && node ~/kiai-plugin/bin/kiai.mjs init && git add .kiai && git commit -m "kiai: black box + rules"
+```
+
+Then one of these. `kiai` below means `node ~/kiai-plugin/bin/kiai.mjs` (alias it, or use the plugin's cache path).
+
+| You use | Do this | Then check |
+|---|---|---|
+| **Claude Code** | `claude plugin marketplace add yuta9999zn/kiai-plugin` · `claude plugin install kiai@kiai` — hooks are on in every session from then on. Want rules to **block** and not only record? `kiai hooks --rules > .claude/settings.json` | do one small task, then `kiai status` → `records > 0` |
+| **Qwen / Llama / any model** (Ollama, LM Studio, vLLM, OpenAI-compatible) | run the model through a harness that executes every command as `kiai wrap --tool Bash --session <id> -- <command>`. Reference harness, ~100 lines, zero deps: `OLLAMA_MODEL=qwen2.5:7b node ~/kiai-plugin/adapters/ollama/harness.mjs "…"`. Other endpoint: copy it, change the `fetch`, keep `runThroughKiai` | ask the model for `git reset --hard` → `BLOCKED BY safety/…`, exit 2, not run; `kiai verify` green |
+| **Codex CLI** | after each session (or cron): `kiai import codex` — reads the rollouts Codex already writes; idempotent. Nothing is blocked (it happens after the fact); for a gate, drive Codex through `kiai wrap` like any model | `kiai import codex --dry-run` shows what it sees; `kiai verify` |
+| **Cursor** | `kiai hooks --agent cursor > .cursor/hooks.json` (prints an UNVERIFIED warning on purpose). The translator always answers `allow` except on a `block` rule, and never exits ≠ 0 | run a session, `kiai status`; no records → `KIAI_CURSOR_DEBUG=1` prints the payload on stderr — send one redacted payload back and the mapping gets fixed |
+
+Update: `claude plugin update kiai@kiai` or `git -C ~/kiai-plugin pull`; new rules without overwriting yours: `kiai rules install`
+(`--force` to take the plugin's copy); broken rule after a hand edit: `kiai rules lint` names the file. Uninstall: `claude plugin uninstall kiai@kiai`
+or delete the clone — `.kiai/` stays, it is yours. Full walkthrough per agent, in Vietnamese: **[docs/HANDOFF.md](docs/HANDOFF.md)**;
+each adapter has its own README: [`adapters/generic/`](adapters/generic/README.md), [`adapters/ollama/`](adapters/ollama/README.md),
+[`adapters/codex/`](adapters/codex/README.md), [`adapters/cursor/`](adapters/cursor/README.md).
 ## Install in 10 minutes
 
 **As a Claude Code plugin (recommended):**
@@ -553,8 +578,8 @@ the lock (measured 2026-09-18: a marketplace install had the `rules` command and
 | any model via `wrap` | **measured** | `qwen2.5:7b`: 3 calls, `git reset --hard` refused, model explained why; 6 records, verify green |
 | Cursor | **not measured** | adapter written blind, fails safe |
 
-Step-by-step for each, plus update / fix / uninstall: **[docs/HANDOFF.md](docs/HANDOFF.md)** (Vietnamese).
-Adapters with their own READMEs: `adapters/generic/`, `adapters/ollama/`, `adapters/codex/`, `adapters/cursor/`.
+Commands per agent: [Pick your agent](#pick-your-agent--what-to-run-step-by-step) at the top. Full walkthrough, update / fix / uninstall: **[docs/HANDOFF.md](docs/HANDOFF.md)** (Vietnamese).
+Every adapter directory carries its own README (a test holds this): `adapters/generic/`, `adapters/ollama/`, `adapters/codex/`, `adapters/cursor/`.
 
 ## What it does not record, and redaction limits
 
@@ -571,7 +596,7 @@ call it — but the only hook system it has been seen working with is Claude Cod
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~35 s, 159 tests (v0.7.0)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 160 tests (v0.7.0)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).
