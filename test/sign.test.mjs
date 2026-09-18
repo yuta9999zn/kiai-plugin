@@ -24,7 +24,11 @@ function tmpRepo() {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'kiai-sign-')));
   fs.mkdirSync(path.join(dir, '.kiai'), { recursive: true });
   const env = { KIAI_UOW: 'UOW-900' };
-  const t = (i) => new Date(Date.UTC(2026, 8, 17, 1, 0, i));
+  // Real time, not a fixed date: the CLI writes with the real clock, and a fixture pinned to one day
+  // lands in a different day-file from everything the test then does. That is exactly what broke at
+  // 2026-09-18 00:00 — every record here had been stamped 2026-09-17.
+  const base = Date.now() - 60_000;
+  const t = (i) => new Date(base + i * 1000);
   appendRecord(dir, buildRecord({ session_id: 's1', hook_event_name: 'SessionStart' }, { cwd: dir, root: dir, env, now: t(1) }));
   fs.writeFileSync(path.join(dir, 'app.txt'), 'hello\n');
   appendRecord(dir, buildRecord({ session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Write', tool_use_id: 't1', tool_input: { file_path: path.join(dir, 'app.txt'), content: 'hello\n' } }, { cwd: dir, root: dir, env, now: t(2) }));
@@ -66,7 +70,10 @@ test('TS-127-01 a signed decision reports SIGNED by the identity, and the record
   const acc = await runCli(['accept', '--uow', 'UOW-900', '--decision', 'approve', '--by', 'lead@example.com', '--sign', '--key', key], { cwd: root });
   assert.equal(acc.code, 0, acc.stderr);
 
-  const chain = fs.readFileSync(path.join(root, '.kiai', 'flight', fs.readdirSync(path.join(root, '.kiai', 'flight'))[0], fs.readdirSync(path.join(root, '.kiai', 'flight', fs.readdirSync(path.join(root, '.kiai', 'flight'))[0])).find((f) => f.endsWith('.jsonl'))), 'utf8');
+  // Fixture records carry a fixed date and the CLI writes with the real one, so past midnight they
+  // land in two day-files. Reading only the first found nothing at 2026-09-18 00:00.
+  const wdir = path.join(root, '.kiai', 'flight', fs.readdirSync(path.join(root, '.kiai', 'flight'))[0]);
+  const chain = fs.readdirSync(wdir).filter((f) => f.endsWith('.jsonl')).sort().map((f) => fs.readFileSync(path.join(wdir, f), 'utf8')).join('');
   const dec = chain.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((r) => r.event === 'decision');
   assert.ok(Array.isArray(dec.sig), 'sig is an ARRAY from the first version: a post-quantum algorithm is added, not swapped');
   assert.equal(dec.sig.length, 1);

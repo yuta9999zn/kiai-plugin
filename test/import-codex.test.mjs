@@ -440,7 +440,8 @@ test('TS-124-10 secrets in a Codex log are redacted on the way into the chain', 
   ].join('\n') + '\n');
 
   importCodex(root, { home, env: { ...process.env, ...ENV } });
-  const text = fs.readFileSync(path.join(flightDir(root), codexWriter(root), fs.readdirSync(path.join(flightDir(root), codexWriter(root))).find((f) => f.endsWith('.jsonl'))), 'utf8');
+  const cdir = path.join(flightDir(root), codexWriter(root));
+  const text = fs.readdirSync(cdir).filter((f) => f.endsWith('.jsonl')).sort().map((f) => fs.readFileSync(path.join(cdir, f), 'utf8')).join('');
   assert.ok(!text.includes(key), 'an API key in a code-mode command is redacted');
   assert.ok(!text.includes(token), 'a token in an argv is redacted');
   assert.ok(text.includes('[REDACTED]'));

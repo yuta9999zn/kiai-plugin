@@ -123,9 +123,10 @@ test('chain survives a missing chain.json (rebuilt from files) and a CRLF-saved 
   fs.rmSync(path.join(writerDir(root), 'chain.json'));
   const c = appendRecord(root, buildRecord(payload(), { cwd: root }));
   assert.equal(c.seq, 3);
-  const file = fs.readdirSync(writerDir(root)).find((f) => f.endsWith('.jsonl'));
-  const p = path.join(writerDir(root), file);
-  fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/\n/g, '\r\n'));
+  for (const file of fs.readdirSync(writerDir(root)).filter((f) => f.endsWith('.jsonl'))) {
+    const p = path.join(writerDir(root), file);
+    fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/\n/g, '\r\n'));
+  }
   assert.equal(verifyChain(root).ok, true);
 });
 
@@ -265,6 +266,10 @@ test('plugin manifest + hooks.json are consistent with the CLI and carry no sheb
   const root = path.join(HERE, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiai');
+  // The marketplace shows plugin.json's version, `npm` shows package.json's. They drifted four
+  // releases apart (0.2.2 vs 0.6.0) before anything noticed, because nothing compared them.
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.equal(manifest.version, pkg.version, 'plugin.json and package.json must carry the same version — the marketplace reads the first, npm the second');
   const hooks = JSON.parse(fs.readFileSync(path.join(root, 'hooks', 'hooks.json'), 'utf8')).hooks;
   assert.deepEqual(Object.keys(hooks), ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'SubagentStop', 'SessionEnd']);
   for (const [ev, groups] of Object.entries(hooks)) {

@@ -48,7 +48,11 @@ function tmpRepo({ gitInit = true } = {}) {
   if (gitInit) { git(dir, ['init', '-q', '.']); git(dir, ['commit', '-q', '--allow-empty', '-m', 'init']); }
   fs.mkdirSync(path.join(dir, '.kiai'), { recursive: true });
   const env = { KIAI_UOW: 'UOW-900' };
-  const t = (i) => new Date(Date.UTC(2026, 8, 17, 1, 0, i));
+  // Real time, not a fixed date: the CLI writes with the real clock, and a fixture pinned to one day
+  // lands in a different day-file from everything the test then does. That is exactly what broke at
+  // 2026-09-18 00:00 — every record here had been stamped 2026-09-17.
+  const base = Date.now() - 60_000;
+  const t = (i) => new Date(base + i * 1000);
   for (const [i, ev] of ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop'].entries()) {
     appendRecord(dir, buildRecord({ session_id: 's1', hook_event_name: ev }, { cwd: dir, root: dir, env, now: t(i + 1) }));
   }
@@ -66,7 +70,8 @@ function makeKey(name = 'k') {
 const flightFile = (root) => {
   const base = path.join(root, '.kiai', 'flight');
   const w = fs.readdirSync(base)[0];
-  const f = fs.readdirSync(path.join(base, w)).find((x) => x.endsWith('.jsonl'));
+  // The tail of the chain is in the LATEST day-file. Day-file names sort chronologically.
+  const f = fs.readdirSync(path.join(base, w)).filter((x) => x.endsWith('.jsonl')).sort().pop();
   return { jsonl: path.join(base, w, f), chain: path.join(base, w, 'chain.json') };
 };
 

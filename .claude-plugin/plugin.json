@@ -1,7 +1,7 @@
 {
   "name": "kiai",
-  "version": "0.2.2",
-  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, with verify, evidence reports and an acceptance packet (kiai accept). Install in 10 minutes on any repo.",
+  "version": "0.6.0",
+  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, committed anchors, an acceptance packet with real SSH signatures (kiai accept --sign), rules the agent works under as data (kiai rules), and import of Codex CLI sessions. Offline, zero dependencies.",
   "author": {
     "name": "Nguyen Truong An"
   },
@@ -14,6 +14,9 @@
     "governance",
     "flight-record",
     "hooks",
-    "acceptance"
+    "acceptance",
+    "signature",
+    "rules",
+    "codex"
   ]
 }

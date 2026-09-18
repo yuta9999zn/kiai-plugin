@@ -262,7 +262,9 @@ test('P3 redact: 25 common credential shapes never reach a record (Bash command,
     assert.equal(JSON.stringify(grep).includes(marker), false, `Grep summary leaked: ${text}`);
     appendRecord(root, noteRecord(text, { cwd: root, by: text }));
   }
-  const jsonl = fs.readFileSync(path.join(writerDir(root), fs.readdirSync(writerDir(root)).find((f) => f.endsWith('.jsonl'))), 'utf8');
+  // Every day-file, not the first: the seeded records carry a fixed 2026-09-05 date while the notes
+  // are written at the real time, so `.find()` was reading the FIXTURE and never the notes.
+  const jsonl = fs.readdirSync(writerDir(root)).filter((f) => f.endsWith('.jsonl')).sort().map((f) => fs.readFileSync(path.join(writerDir(root), f), 'utf8')).join('');
   for (const [text, marker] of SECRETS) assert.equal(jsonl.includes(marker), false, `note leaked: ${text}`);
 });
 
