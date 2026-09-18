@@ -1,0 +1,167 @@
+[
+  {
+    "id": "tooling/no-backslash-inside-a-heredoc",
+    "family": "tooling",
+    "rank": 10,
+    "modality": "MUST_NOT",
+    "enforcement": "block",
+    "title": {
+      "vi": "Không đặt backslash vào heredoc của công cụ Bash",
+      "en": "Never put a backslash inside a Bash-tool heredoc"
+    },
+    "statement": {
+      "vi": "Công cụ Bash nuốt backslash trong heredoc — kể cả heredoc có nháy (`<<'EOF'`): `\\\\`→`\\`, `\\n`→xuống dòng thật, `\\b`→backspace. Cần viết backslash thì tạo script bằng công cụ Write rồi chạy script, hoặc dựng bằng `chr(92)`/`chr(10)` trong Python.",
+      "en": "The Bash tool eats backslashes inside heredocs, quoted ones included (`<<'EOF'`): `\\\\` becomes `\\`, `\\n` becomes a real newline, `\\b` becomes a backspace. When content needs a backslash, write the script with the Write tool and run it, or build it from `chr(92)`/`chr(10)` in Python."
+    },
+    "why": {
+      "vi": "Ngày 17/09 lỗi này hỏng BA lần. Hai lần đầu vô hại vì mã lập tức sai cú pháp. Lần thứ ba nguy hiểm: chuỗi `[^,\\n]{1,60}` trong một commit sổ sách **cắt đôi một hàng bảng markdown** trong `backlog.md` — markdown không có cú pháp để hỏng nên nó im lặng sai, lọt lên `feat/nexus-ui` và lên VPS, chỉ lộ khi CI của một nhánh khác chạy.",
+      "en": "On 2026-09-17 this broke three times. The first two were harmless because the code failed to parse immediately. The third was not: `[^,\\n]{1,60}` inside a bookkeeping commit split a markdown table row in `backlog.md` in half — markdown has no syntax to fail, so it was silently wrong, reached `feat/nexus-ui` and the VPS, and only surfaced when CI ran on a different branch."
+    },
+    "source": "2026-09-17, three occurrences; the third corrupted backlog.md on feat/nexus-ui and on the VPS. Memory: heredoc-nuot-backslash.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "<<\\s*'?[A-Za-z_]+'?"
+      },
+      {
+        "signal": "command",
+        "op": "contains",
+        "value": "\\"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Heredoc python có regex `\\\\s` trong đó",
+          "en": "A python heredoc carrying a regex with `\\\\s` in it"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "python - <<'PY'\ns = s.replace('git\\\\s+reset', 'x')\nPY"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Cùng heredoc python, nhưng dựng backslash bằng `chr(92)`",
+          "en": "The same python heredoc, building the backslash with `chr(92)`"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "python - <<'PY'\nBS = chr(92)\ns = s.replace('git' + BS + 's+reset', 'x')\nPY"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng công cụ, cùng heredoc, cùng ý định — chỉ khác cách dựng ký tự.",
+          "en": "NEAR MISS: same tool, same heredoc, same intent — only the way the character is built differs."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Viết script vá bằng công cụ Write rồi chạy nó",
+          "en": "Write the patch script with the Write tool, then run it"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "python scratchpad/patch.py"
+        }
+      }
+    ],
+    "refs": [
+      "tooling/check-an-invariant-after-editing-data"
+    ]
+  },
+  {
+    "id": "tooling/check-an-invariant-after-editing-data",
+    "family": "tooling",
+    "rank": 20,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Sửa tệp DỮ LIỆU xong thì kiểm ngay một bất biến rẻ tiền",
+      "en": "After editing a DATA file, check a cheap invariant immediately"
+    },
+    "statement": {
+      "vi": "Sau khi sửa markdown/JSON/CSV bằng script, kiểm ngay một bất biến: đếm cột mọi hàng bảng, parse lại JSON, đếm dòng. Không đợi CI.",
+      "en": "After editing markdown/JSON/CSV with a script, check one invariant straight away: count the cells in every table row, re-parse the JSON, count the lines. Do not wait for CI."
+    },
+    "why": {
+      "vi": "Mã có cú pháp nên hỏng là đỏ ngay. Dữ liệu thì không: một hàng bảng thiếu cột vẫn là markdown hợp lệ. Nó âm thầm sai cho tới khi một cổng ở xa bắt được — hoặc không ai bắt.",
+      "en": "Code has a syntax, so breaking it goes red at once. Data does not: a table row missing a cell is still valid markdown. It stays silently wrong until some distant gate catches it — or nobody does."
+    },
+    "source": "2026-09-17: a split row in backlog.md reached feat/nexus-ui and the VPS; the MCP kiai_state gate caught it a day's work later.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Chèn một hàng vào `backlog.md` bằng script rồi commit ngay",
+          "en": "Insert a row into `backlog.md` with a script and commit straight away"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Chèn xong thì đếm cột mọi hàng trước khi commit",
+          "en": "Insert, then count the cells in every row before committing"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng script vá, chỉ thêm một phép đếm đứng sau.",
+          "en": "NEAR MISS: the same patch script, with one count standing behind it."
+        }
+      }
+    ],
+    "refs": [
+      "tooling/read-the-ci-of-a-bookkeeping-commit"
+    ]
+  },
+  {
+    "id": "tooling/read-the-ci-of-a-bookkeeping-commit",
+    "family": "tooling",
+    "rank": 30,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Xem CI của commit sổ sách, không chỉ commit mã",
+      "en": "Read the CI of a bookkeeping commit, not only of a code commit"
+    },
+    "statement": {
+      "vi": "Commit chỉ đụng tài liệu/sổ sách vẫn phải đợi CI và đọc kết quả trước khi đi làm việc khác.",
+      "en": "A commit that only touches docs or bookkeeping still has to wait for CI, and the result still has to be read, before moving on."
+    },
+    "why": {
+      "vi": "Tôi coi commit sổ sách là vô hại nên push rồi bỏ đi. Chính commit ấy làm hỏng `backlog.md` và mang lỗi lên VPS. \"Chỉ là tài liệu\" là lúc phòng bị thấp nhất.",
+      "en": "I treated a bookkeeping commit as harmless, pushed it and walked away. That commit is the one that corrupted `backlog.md` and carried the fault to the VPS. \"It is only docs\" is the moment the guard is lowest."
+    },
+    "source": "2026-09-17, commit 9f51689 / c8bbc69: CI was never read; the fault surfaced from another branch's run.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Push commit sổ sách rồi chuyển sang UoW tiếp theo",
+          "en": "Push a bookkeeping commit and move on to the next UoW"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Push rồi đợi CI của đúng commit ấy",
+          "en": "Push, then wait for CI on that exact commit"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng commit sổ sách, chỉ khác việc có đọc kết quả hay không.",
+          "en": "NEAR MISS: the same bookkeeping commit; the difference is whether the result gets read."
+        }
+      }
+    ],
+    "refs": [
+      "tooling/check-an-invariant-after-editing-data"
+    ]
+  }
+]

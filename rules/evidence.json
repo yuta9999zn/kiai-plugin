@@ -1,0 +1,236 @@
+[
+  {
+    "id": "evidence/a-gate-must-not-go-green-for-lack-of-evidence",
+    "family": "evidence",
+    "rank": 10,
+    "modality": "MUST_NOT",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Cổng không được xanh vì THIẾU bằng chứng",
+      "en": "A gate must never go green for lack of evidence"
+    },
+    "statement": {
+      "vi": "Khi bằng chứng vắng mặt, cổng phải nói \"không kiểm được\" và trả mã thất bại dưới cờ nghiêm ngặt — không bao giờ trả \"đạt\".",
+      "en": "When the evidence is absent the gate must say \"could not check\" and fail under a strict flag — never report a pass."
+    },
+    "why": {
+      "vi": "Bản đầu của UOW-127 in `SIGNED` khi gói đã ký bị XOÁ mất. Hệ quả: `rm` biến một chữ ký BỊ TỪ CHỐI thành exit 0. Vắng bằng chứng là trạng thái nguy hiểm nhất, không phải trạng thái trung tính.",
+      "en": "The first version of UOW-127 printed `SIGNED` when the signed packet had been DELETED. Consequence: `rm` turned a REJECTED signature into exit 0. Missing evidence is the most dangerous state, not a neutral one."
+    },
+    "source": "UOW-127 review round 1, 2026-09-17; fixed by adding SIGNATURE UNCHECKABLE.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Không tìm thấy tệp cần kiểm ⇒ bỏ qua phép kiểm và trả 0",
+          "en": "The file to check is missing ⇒ skip the check and return 0"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Không tìm thấy tệp ⇒ trạng thái riêng `UNCHECKABLE`, exit 1 dưới `--require-*`",
+          "en": "The file is missing ⇒ its own state `UNCHECKABLE`, exit 1 under `--require-*`"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng tình huống \"không có tệp\"; khác nhau ở chỗ nó được gọi tên hay bị nuốt.",
+          "en": "NEAR MISS: the same \"file is missing\" situation; the difference is whether it gets named or swallowed."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Repo chưa từng neo ⇒ `NOT ANCHORED`, exit 0, và `--require-anchor` mới làm nó đỏ",
+          "en": "A repo that never anchored ⇒ `NOT ANCHORED`, exit 0, and only `--require-anchor` makes it red"
+        },
+        "note": {
+          "vi": "Vắng bằng chứng KHÔNG đồng nghĩa với tấn công — xem luật `unknown-is-not-a-pass-and-not-an-accusation`.",
+          "en": "Absent evidence is not the same as an attack — see `unknown-is-not-a-pass-and-not-an-accusation`."
+        }
+      }
+    ],
+    "refs": [
+      "evidence/a-false-alarm-and-a-false-pass-are-not-symmetric",
+      "evidence/unknown-is-not-a-pass-and-not-an-accusation"
+    ]
+  },
+  {
+    "id": "evidence/a-false-alarm-and-a-false-pass-are-not-symmetric",
+    "family": "evidence",
+    "rank": 20,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Báo động oan và bỏ lọt KHÔNG đối xứng — thêm trạng thái thứ ba, đừng đổi phe",
+      "en": "A false alarm and a false pass are not symmetric — add a third state, do not switch sides"
+    },
+    "statement": {
+      "vi": "Khi sửa một báo động oan, không được đổi nhánh sang \"cho qua\". Dựng một trạng thái THỨ BA nói đúng điều đang xảy ra.",
+      "en": "When fixing a false alarm, do not flip the branch to \"pass\". Build a THIRD state that says what is actually happening."
+    },
+    "why": {
+      "vi": "Tôi đổi một báo động oan thành một lần bỏ lọt: nhánh thiếu gói in `SIGNED` và không được đếm, nên `rm` biến quyết định BỊ TỪ CHỐI thành exit 0. Hai lỗi ấy không cùng giá: một cái làm phiền, một cái phá hệ thống.",
+      "en": "I traded a false alarm for a false pass: the missing-packet branch printed `SIGNED` and was not counted, so `rm` turned a REJECTED decision into exit 0. The two errors do not cost the same: one is annoying, the other defeats the system."
+    },
+    "source": "UOW-127 review round 1; the same shape recurred in UOW-128 where `uncheckable` swallowed `not reviewed`.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Cổng kêu oan ⇒ nới điều kiện cho nó im",
+          "en": "The gate cries wolf ⇒ loosen the condition until it goes quiet"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Cổng kêu oan ⇒ tách ca lành ra một trạng thái riêng, ca độc vẫn đỏ",
+          "en": "The gate cries wolf ⇒ split the benign case into its own state; the malicious case stays red"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng phản ứng với một báo động oan; khác ở chỗ ca độc còn bị bắt hay không.",
+          "en": "NEAR MISS: the same response to a false alarm; the difference is whether the malicious case is still caught."
+        }
+      }
+    ],
+    "refs": [
+      "evidence/a-gate-must-not-go-green-for-lack-of-evidence"
+    ]
+  },
+  {
+    "id": "evidence/unknown-is-not-a-pass-and-not-an-accusation",
+    "family": "evidence",
+    "rank": 30,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "\"Không kiểm được\" không phải \"đạt\", cũng không phải \"vi phạm\" — và rất dễ bị lạm dụng",
+      "en": "\"Cannot check\" is neither a pass nor an accusation — and it is very easy to abuse"
+    },
+    "statement": {
+      "vi": "Trước khi xếp một ca là \"không kiểm được\", hỏi: **ở đây CÓ THỂ có bằng chứng không?** Nếu có mà không thấy, đó là **KHÔNG**, không phải \"không biết\". Chỉ khi bằng chứng không thể tồn tại thì mới là \"không biết\".",
+      "en": "Before classing a case as \"cannot check\", ask: **could evidence exist here?** If it could and it is not there, that is a **NO**, not an \"unknown\". Only when evidence cannot exist at all is it an unknown."
+    },
+    "why": {
+      "vi": "Ở UOW-128 tôi xếp \"repo CÓ git nhưng `allowed_signers` chưa từng commit\" là `unknown`, nên cổng cho qua và **đòn tấn công đo được vẫn sống**. Mà đó đúng là dấu vết một tác tử tự ghi khoá để lại. Test của chính tôi bắt được.",
+      "en": "In UOW-128 I classed \"the repo HAS git but `allowed_signers` was never committed\" as `unknown`, so the gate let it through and the measured attack survived. That state is exactly what an agent writing its own key leaves behind. My own test caught it."
+    },
+    "source": "UOW-128 build, 2026-09-17: TS-128-05 went red and exposed the hole in my own patch.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Repo có git, danh sách ký chưa commit ⇒ gọi là \"không kiểm được\" ⇒ cho qua",
+          "en": "The repo has git, the signer list is uncommitted ⇒ call it \"cannot check\" ⇒ let it pass"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Repo có git, danh sách chưa commit ⇒ **KHÔNG được review**, cổng đỏ",
+          "en": "The repo has git, the list is uncommitted ⇒ **NOT reviewed**, the gate goes red"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng một thiếu vắng; khác ở chỗ bằng chứng CÓ THỂ tồn tại hay không.",
+          "en": "NEAR MISS: the same absence; what differs is whether the evidence could have existed."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Không có repo git ⇒ thật sự không thể có bản đã review ⇒ \"không kiểm được\", chỉ cờ riêng mới từ chối",
+          "en": "No git repo at all ⇒ a reviewed copy genuinely cannot exist ⇒ \"cannot check\", refused only by its own flag"
+        }
+      }
+    ],
+    "refs": [
+      "evidence/a-false-alarm-and-a-false-pass-are-not-symmetric"
+    ]
+  },
+  {
+    "id": "evidence/print-only-what-was-verified",
+    "family": "evidence",
+    "rank": 40,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Chỉ in ra thứ ĐÃ KIỂM, không in thứ tệp hay bản ghi tự KHAI",
+      "en": "Print only what was VERIFIED, never what a file or record merely CLAIMS"
+    },
+    "statement": {
+      "vi": "Danh tính, thuật toán, dấu vân tay và mọi trường xuất hiện trong một dòng kết luận phải lấy từ đầu ra của bộ kiểm, không lấy từ nội dung đang bị kiểm.",
+      "en": "Identity, algorithm, fingerprint and every field appearing in a verdict line must come from the verifier's output, never from the content being verified."
+    },
+    "why": {
+      "vi": "Dòng `Signature (…)` nằm DƯỚI footer nên không gì phủ nó. Reviewer in được `SIGNED by cto@example.com — ml-dsa-87 … GATE 4 PASSED` trên một gói do Alice ký. Thứ kẻ tấn công viết được thì không phải bằng chứng.",
+      "en": "The `Signature (…)` header sits BELOW the footer, so nothing covers it. A reviewer produced `SIGNED by cto@example.com — ml-dsa-87 … GATE 4 PASSED` on a packet Alice had signed. What an attacker can write is not evidence."
+    },
+    "source": "UOW-127 review round 2, 2026-09-17.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "In `alg` lấy từ trường `alg` của chính bản ghi",
+          "en": "Print `alg` taken from the record's own `alg` field"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "In `alg` bóc từ dòng `… with ED25519 key SHA256:…` của chính `ssh-keygen`",
+          "en": "Print `alg` extracted from ssh-keygen's own `… with ED25519 key SHA256:…` line"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng một trường, cùng chỗ in ra; khác ở chỗ ai là người nói.",
+          "en": "NEAR MISS: the same field in the same output; what differs is who said it."
+        }
+      }
+    ],
+    "refs": [
+      "evidence/a-gate-must-not-go-green-for-lack-of-evidence"
+    ]
+  },
+  {
+    "id": "evidence/ask-a-copy-the-writer-does-not-control",
+    "family": "evidence",
+    "rank": 50,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Hỏi một bản sao mà kẻ ghi không kiểm soát",
+      "en": "Ask a copy the writer does not control"
+    },
+    "statement": {
+      "vi": "Bằng chứng nằm trong cây làm việc thì kẻ ghi được cây làm việc sửa được nó. Muốn nó có nghĩa, phải đối chiếu với một bản sao ngoài tầm tay kẻ ấy — commit trong git, neo đã đẩy đi, máy khác.",
+      "en": "Evidence that lives in the working tree can be rewritten by whoever writes the working tree. For it to mean anything, compare it with a copy beyond that reach — a commit in git, a pushed anchor, another machine."
+    },
+    "why": {
+      "vi": "Đo ngày 17/09: cắt đuôi chuỗi rồi vá `chain.json` (hai trường) ⇒ `verify` in `OK`, exit 0. Xoá `anchors.jsonl` **đã commit** ⇒ về `NOT ANCHORED`, exit 0. Cả hai bịt được chỉ bằng cách đi hỏi git — thông tin đã nằm sẵn ở đó, chỉ là không ai hỏi.",
+      "en": "Measured 2026-09-17: cut the chain's tail, patch `chain.json` (two fields) ⇒ `verify` printed `OK`, exit 0. Delete the COMMITTED `anchors.jsonl` ⇒ back to `NOT ANCHORED`, exit 0. Both closed by asking git — the information was already there; nobody was asking."
+    },
+    "source": "UOW-128, self-attack on KIAI, 2026-09-17.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Tin `chain.json` trên đĩa vì nó khớp với tệp `.jsonl` trên đĩa",
+          "en": "Trust `chain.json` on disk because it agrees with the `.jsonl` on disk"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "So `n` dòng đầu của `anchors.jsonl` với `git show HEAD:` từng byte",
+          "en": "Compare the first `n` lines of `anchors.jsonl` byte-for-byte with `git show HEAD:`"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng tệp nhân chứng; khác ở chỗ bản đối chiếu có nằm ngoài tầm kẻ ghi hay không.",
+          "en": "NEAR MISS: the same witness file; what differs is whether the copy compared against is out of the writer's reach."
+        }
+      }
+    ],
+    "refs": [
+      "evidence/a-gate-must-not-go-green-for-lack-of-evidence"
+    ]
+  }
+]

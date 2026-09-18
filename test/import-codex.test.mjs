@@ -57,7 +57,7 @@ function runCli(args, { cwd, env = {} } = {}) {
 
 const ENV = { KIAI_UOW: 'UOW-124' };
 // Exactly how Codex invokes a shell (measured: 996/996 real CommandExecution records).
-const PWSH = String.raw`C:\Users\nguye\.cache\codex-runtimes\codex-primary-runtime\dependencies\pwsh\pwsh.exe`;
+const PWSH = String.raw`C:\Users\dev\.cache\codex-runtimes\codex-primary-runtime\dependencies\pwsh\pwsh.exe`;
 const codexRecords = (root) => readWriter(path.join(flightDir(root), codexWriter(root)), codexWriter(root));
 
 // ---- TS-124-01 --------------------------------------------------------------------------

@@ -1,0 +1,197 @@
+[
+  {
+    "id": "review/find-the-twin-branch-before-calling-a-reviewer",
+    "family": "review",
+    "rank": 10,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Vá một nhánh xong thì GREP mọi nơi gọi, ở mọi codebase, TRƯỚC khi gọi reviewer",
+      "en": "After patching one branch, GREP every caller, in every codebase, BEFORE calling a reviewer"
+    },
+    "statement": {
+      "vi": "Sửa một điều kiện hay một chuỗi hiển thị xong, grep hết mọi nơi dùng nó — kể cả ngoài gói hiện tại — rồi mới xin review. **Kích hoạt cụ thể: hễ viết ra một câu giải thích vì sao một hàm có sẵn là SAI trong bối cảnh này, thì việc tiếp theo là `grep` tên hàm ấy, trước khi làm bất cứ gì khác.** Hai nhánh cùng luật thì viết cùng hình dạng, đọc cùng một cờ.",
+      "en": "After changing a condition or an output string, grep every place that uses it — including outside the current package — before asking for review. **Concrete trigger: the moment you write a sentence explaining why an existing helper is WRONG in this context, the next thing you do is `grep` that helper's name, before anything else.** Two branches under one rule must be written the same shape and read the same flag."
+    },
+    "why": {
+      "vi": "Bảy lần liên tiếp trong UOW-127 và UOW-128, lỗi còn lại đều cùng hình dạng: **vá đúng một nhánh trong một cặp sinh đôi**. Nhánh còn lại vẫn xanh nên không có tín hiệu nào báo. Ghi rủi ro ấy vào tài liệu **không hiệu quả** — tôi đã viết nó vào `intent-UOW-128.md` §4 rồi vẫn quên. Chỉ khi đổi thành một việc cụ thể (grep) thì tôi mới đi trước reviewer được một lần. **Lần thứ TÁM (UOW-129)** tệ hơn cả: tôi tự viết comment giải thích vì sao `cell()` sai trên terminal, dựng `plain()` để thay — rồi vá 2 trong 7 điểm gọi. Việc cụ thể chỉ có ích khi CHẠY; nên nó cần một kích hoạt, không chỉ một ý định.",
+      "en": "Seven times running across UOW-127 and UOW-128, the remaining defect had the same shape: **one branch of a twin pair patched, the other left alone**. The other branch stays green, so nothing signals. Writing the risk into a document did NOT work — I put it in `intent-UOW-128.md` §4 and forgot it anyway. Only turning it into a concrete action (grep) got me ahead of the reviewer once. **The eighth (UOW-129)** was the worst: I wrote the comment explaining why `cell()` is wrong on a terminal, built `plain()` to replace it — then patched 2 of its 7 call sites. A concrete action only helps when it is RUN, so it needs a trigger, not just an intention."
+    },
+    "source": "UOW-127 rounds 2/3/4 and UOW-128 rounds 1/2, plus the seventh found in kiai-monitor by grepping, 2026-09-17. Eighth: `cell()` vs `plain()` in UOW-129, found by review round 1.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Sửa `verify`, thấy test xanh, gọi reviewer — `accept --check` vẫn dùng bản cũ",
+          "en": "Fix `verify`, see the tests pass, call the reviewer — `accept --check` still runs the old path"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Thêm dòng trạng thái mới trong CLI mà không grep xem ai đang PHÂN TÍCH dòng ấy",
+          "en": "Add a new status line in the CLI without grepping for whoever PARSES that line"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Viết comment *\"hàm này sai ở terminal\"*, dựng hàm thay thế, rồi áp cho 2 trong 7 chỗ gọi",
+          "en": "Write the comment \"this helper is wrong on a terminal\", build the replacement, then apply it at 2 of 7 call sites"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Sửa `verify` xong, grep `anchorLine(`/`anchorsEvidence(` toàn repo, thấy `status` và Monitor còn thiếu, vá nốt rồi mới gọi reviewer",
+          "en": "Fix `verify`, then grep `anchorLine(`/`anchorsEvidence(` across the repo, find `status` and the Monitor still missing, patch them, then call the reviewer"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng bản vá, cùng test xanh; khác đúng ba mươi giây grep.",
+          "en": "NEAR MISS: the same patch, the same green tests; thirty seconds of grep apart."
+        }
+      }
+    ],
+    "refs": [
+      "review/do-not-self-certify-after-your-own-patch",
+      "process/writing-a-lesson-down-is-not-learning-it"
+    ]
+  },
+  {
+    "id": "review/do-not-self-certify-after-your-own-patch",
+    "family": "review",
+    "rank": 20,
+    "modality": "MUST_NOT",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Không tự chứng nhận sau khi tự vá",
+      "en": "Do not self-certify after your own patch"
+    },
+    "statement": {
+      "vi": "Sau khi vá theo phán quyết của reviewer, không tự kết luận \"xong rồi, không cần xem lại\". Xin một vòng hẹp chỉ soi đúng bản vá.",
+      "en": "After patching in response to a review, do not conclude \"done, no need to look again\". Ask for a narrow round that looks only at the patch."
+    },
+    "why": {
+      "vi": "Vòng 1 và vòng 2 của UOW-127 đều kết thúc bằng câu \"sửa xong là ĐẠT, không cần review lại\" — và **cả hai lần bản vá của tôi đẻ ra P mới**. Vòng 4, xin thêm một lượt, lại bắt được một P nữa. Một vòng hẹp rẻ hơn nhiều so với ship một cổng thủng.",
+      "en": "Rounds 1 and 2 of UOW-127 both ended with \"fixing this is enough, no re-review needed\" — and BOTH times my patch spawned a new P. Round 4, asked for anyway, caught another. A narrow round is far cheaper than shipping a hole."
+    },
+    "source": "UOW-127 rounds 1→4, 2026-09-17.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Đóng điều kiện của reviewer, chạy test xanh, tự khoá GATE 3",
+          "en": "Close the reviewer's conditions, see green tests, close GATE 3 yourself"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Đóng điều kiện, rồi xin một vòng hẹp nêu đích danh hai chỗ lo nhất",
+          "en": "Close the conditions, then ask for a narrow round naming the two places you worry about most"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng bản vá đã xong; khác ở chỗ ai là người nói \"đạt\".",
+          "en": "NEAR MISS: the same finished patch; what differs is who gets to say \"pass\"."
+        }
+      }
+    ],
+    "refs": [
+      "review/find-the-twin-branch-before-calling-a-reviewer",
+      "review/fix-it-when-it-is-cheap-instead-of-naming-a-debt"
+    ]
+  },
+  {
+    "id": "review/fix-it-when-it-is-cheap-instead-of-naming-a-debt",
+    "family": "review",
+    "rank": 30,
+    "modality": "SHOULD",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Reviewer cho phép ghi nợ thì vẫn nên SỬA, nếu nó rẻ",
+      "en": "When a reviewer allows a debt, still FIX it if it is cheap"
+    },
+    "statement": {
+      "vi": "Một N reviewer cho phép ghi nợ mà sửa chỉ mất một dòng, và thuộc một họ lỗi đã tái diễn, thì sửa — đừng ghi nợ.",
+      "en": "An N the reviewer is willing to let you defer, which costs one line to fix and belongs to a recurring failure family, gets fixed — not filed."
+    },
+    "why": {
+      "vi": "Nợ có tên là nơi lỗi đi ngủ. Ở UOW-128 vòng 2 reviewer cho phép ghi nợ hai N; tôi sửa cả hai, và một trong hai chính là **đòn tấn công thật** (kẻ tấn công tự chạy `kiai anchor` để tự làm chứng). Ghi nợ là để dành lỗ hổng ấy lại cho ai đó.",
+      "en": "A named debt is where defects go to sleep. In UOW-128 round 2 the reviewer allowed two Ns to be deferred; I fixed both, and one of them was a **real attack** (the attacker running `kiai anchor` to witness their own lie). Filing it would have saved that hole for somebody."
+    },
+    "source": "UOW-128 review round 2, 2026-09-17.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Reviewer nói \"N, không chặn\" ⇒ ghi vào nợ có tên rồi ship",
+          "en": "The reviewer says \"N, not blocking\" ⇒ file it as a named debt and ship"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Reviewer nói \"N, không chặn\" ⇒ đo thấy sửa mất một dòng ⇒ sửa, kèm ca khoá lại",
+          "en": "The reviewer says \"N, not blocking\" ⇒ it measures out at one line ⇒ fix it, with a test to lock it"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng phán quyết của reviewer; khác ở chỗ giá sửa đã được ĐO hay chỉ được đoán.",
+          "en": "NEAR MISS: the same reviewer verdict; what differs is whether the cost of fixing was MEASURED or guessed."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "N thật sự đắt (đổi kiến trúc) ⇒ ghi nợ CÓ TÊN, nêu rõ ranh giới an toàn",
+          "en": "An N that is genuinely expensive (an architecture change) ⇒ file a NAMED debt stating the safety boundary"
+        }
+      }
+    ],
+    "refs": [
+      "review/do-not-self-certify-after-your-own-patch"
+    ]
+  },
+  {
+    "id": "review/a-rule-needs-a-near-miss-not-a-distant-counterexample",
+    "family": "review",
+    "rank": 40,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Luật cần một CA SÁT RANH, không phải một phản ví dụ ở tận đẩu đâu",
+      "en": "A rule needs a NEAR MISS, not a distant counterexample"
+    },
+    "statement": {
+      "vi": "Mỗi luật phải nêu một ca **gần giống hệt ca vi phạm mà vẫn hợp lệ**, chia sẻ cùng tín hiệu chính. Không nêu nổi thì luật ấy đang cấm cả vùng đất quanh thứ nó định cấm.",
+      "en": "Every rule must name a case **almost identical to the forbidden one that is still allowed**, sharing the same primary signal. A rule that cannot name one is forbidding the whole territory around the thing it meant to forbid."
+    },
+    "why": {
+      "vi": "Đo trên 83 system prompt sản xuất thật: `example` là tiêu đề lặp nhiều nhất, gấp ~9 lần thứ nhì — nhưng ở đó ví dụ chỉ để đọc, không ai kiểm, và không ai đòi nó nằm gần đường biên. Một ví dụ hợp lệ ở xa chứng minh \"luật này không cấm bầu trời\", điều chẳng ai nghi ngờ.",
+      "en": "Measured across 83 production system prompts: `example` is the most repeated heading by ~9x — but there the examples are for reading, nothing checks them, and nothing requires them near the boundary. A distant allowed example proves \"this rule does not forbid the sky\", which nobody doubted."
+    },
+    "source": "Audit of x1xhlol/system-prompts-and-models-of-ai-tools, 2026-09-17 (1.8M chars); enforced by `kiai rules lint`.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Luật cấm `git reset --hard`, ví dụ hợp lệ là \"đọc một tệp\"",
+          "en": "A rule forbidding `git reset --hard` whose allowed example is \"read a file\""
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Luật cấm `git reset --hard`, ví dụ hợp lệ là `git reset --soft` — cùng lệnh, khác một cờ",
+          "en": "A rule forbidding `git reset --hard` whose allowed example is `git reset --soft` — the same command, one flag apart"
+        },
+        "note": {
+          "vi": "CA SÁT RANH của chính luật về ca sát ranh.",
+          "en": "The near miss of the near-miss rule itself."
+        }
+      }
+    ],
+    "refs": [
+      "llm/examples-are-the-rule-not-its-decoration"
+    ]
+  }
+]

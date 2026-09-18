@@ -1,7 +1,7 @@
 {
   "name": "kiai",
-  "version": "0.6.0",
-  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, committed anchors, an acceptance packet with real SSH signatures (kiai accept --sign), rules the agent works under as data (kiai rules), and import of Codex CLI sessions. Offline, zero dependencies.",
+  "version": "0.7.0",
+  "description": "Black box for AI coding agents: an append-only, hash-chained flight record of every session and tool call, committed anchors, an acceptance packet with real SSH signatures (kiai accept --sign), rules the agent works under as data (kiai rules), import of Codex CLI sessions, and `kiai wrap` for any agent or model that can run a shell command. Offline, zero dependencies.",
   "author": {
     "name": "Nguyen Truong An"
   },

@@ -532,6 +532,30 @@ verdict with it, and the rules are back to being advice.
   Writing rules to fill out a taxonomy is exactly what `source` exists to prevent.
 - There is no UI, by request.
 
+## Other agents, other models — handing it to a developer
+
+Claude Code gets hooks. Everything else gets the one thing every agent has: a shell command.
+
+```bash
+kiai wrap --tool Bash --session <conversation-id> -- <the command>   # record, ask the rules, run, record
+kiai hooks --agent generic                                          # the 6-field payload contract, to record yourself
+kiai import codex                                                   # Codex CLI: read the rollouts it already writes
+kiai hooks --agent cursor > .cursor/hooks.json                      # Cursor: translator (UNVERIFIED — no client to measure on)
+```
+
+`kiai init` now seeds the 26 starter rules into `.kiai/rules/`, so a fresh install gets the key and not only
+the lock (measured 2026-09-18: a marketplace install had the `rules` command and no rule).
+
+| | status | evidence |
+|---|---|---|
+| Claude Code | **measured** | marketplace install on a clean machine; hooks fire |
+| Codex CLI `import` | **measured** | 85 real rollouts, idempotent |
+| any model via `wrap` | **measured** | `qwen2.5:7b`: 3 calls, `git reset --hard` refused, model explained why; 6 records, verify green |
+| Cursor | **not measured** | adapter written blind, fails safe |
+
+Step-by-step for each, plus update / fix / uninstall: **[docs/HANDOFF.md](docs/HANDOFF.md)** (Vietnamese).
+Adapters with their own READMEs: `adapters/generic/`, `adapters/ollama/`, `adapters/codex/`, `adapters/cursor/`.
+
 ## What it does not record, and redaction limits
 
 Model name and token cost (Claude Code does not expose them to hooks), file contents, the agent's reasoning.
@@ -547,7 +571,7 @@ call it — but the only hook system it has been seen working with is Claude Cod
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~20 s, 144 tests (v0.6.0)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 159 tests (v0.7.0)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).

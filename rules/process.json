@@ -1,0 +1,307 @@
+[
+  {
+    "id": "process/writing-a-lesson-down-is-not-learning-it",
+    "family": "process",
+    "rank": 10,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Viết ra một bài học KHÔNG phải là đã học nó",
+      "en": "Writing a lesson down is NOT learning it"
+    },
+    "statement": {
+      "vi": "Ghi một rủi ro vào tài liệu không tính là đã xử lý nó. Mỗi bài học phải được đổi thành **một việc cụ thể phải làm** (một lệnh grep, một ca test, một cổng), nếu không nó sẽ bị vi phạm bởi chính người vừa viết ra nó.",
+      "en": "Filing a risk in a document does not count as handling it. Every lesson must be turned into **one concrete action** (a grep, a test case, a gate), or it will be broken by the very person who just wrote it."
+    },
+    "why": {
+      "vi": "Hai lần trong CÙNG một UoW, cùng một cơ chế hỏng: (1) tôi ghi rủi ro \"nhánh sinh đôi\" vào `intent-UOW-128.md` §4 rồi vẫn quên nó ở phía neo; (2) tôi ghi lỗ `anchorsEvidence` chỉ đếm dòng vào seal, **cho 60%, gọi là P**, rồi gọi reviewer mà không vá. Không phải tôi không thấy — tôi thấy rồi ghi vào tệp và coi như đã xử lý.",
+      "en": "Twice in ONE UoW, by the same mechanism: (1) I wrote the \"twin branch\" risk into `intent-UOW-128.md` §4 and forgot it anyway on the anchor side; (2) I wrote the `anchorsEvidence` counts-only-lines hole into the seal, **at 60%, labelled P**, then called the reviewer without patching it. It was not that I could not see it — I saw it, filed it, and treated filing as handling."
+    },
+    "source": "UOW-128, 2026-09-17: both failures are recorded in test-report §7 and in seal-UOW-128-KET-QUA.md.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Viết \"cẩn thận với nhánh sinh đôi\" vào intent rồi đi code tiếp",
+          "en": "Write \"mind the twin branch\" into the intent and carry on coding"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Đổi bài học ấy thành một lệnh grep cụ thể chạy trước khi gọi reviewer",
+          "en": "Turn that lesson into one specific grep run before calling the reviewer"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng bài học, cùng người viết; khác ở chỗ nó là một câu hay một việc.",
+          "en": "NEAR MISS: the same lesson, the same author; what differs is whether it is a sentence or an action."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Đổi bài học thành một luật trong `.kiai/rules/` có điều kiện và ví dụ chạy được",
+          "en": "Turn the lesson into a rule in `.kiai/rules/` with a condition and replayable examples"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Đổi bài học thành một việc cụ thể (grep) — rồi **không chạy nó** ở UoW sau",
+          "en": "Turn the lesson into a concrete action (a grep) — then **do not run it** in the next UoW"
+        },
+        "note": {
+          "vi": "UOW-129: tôi tự viết comment giải thích vì sao `cell()` sai trên terminal, dựng `plain()` để thay, rồi **không grep `cell(`** — vá 2 trong 7 điểm. Nhánh sinh đôi lần thứ TÁM. Một việc cụ thể chỉ có ích khi thật sự chạy.",
+          "en": "UOW-129: I wrote the comment explaining why `cell()` is wrong on a terminal, built `plain()` to replace it, then **did not grep for `cell(`** — patching 2 of 7 call sites. The eighth twin branch. A concrete action only helps when it is actually run."
+        }
+      }
+    ],
+    "refs": [
+      "process/a-sealed-prediction-above-fifty-percent-must-be-acted-on",
+      "review/find-the-twin-branch-before-calling-a-reviewer"
+    ]
+  },
+  {
+    "id": "process/a-sealed-prediction-above-fifty-percent-must-be-acted-on",
+    "family": "process",
+    "rank": 20,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Mục nào trong seal ≥ 50% thì phải VÁ hoặc ĐO trước khi gọi reviewer",
+      "en": "Any sealed prediction at 50% or above must be PATCHED or MEASURED before calling a reviewer"
+    },
+    "statement": {
+      "vi": "Seal là để đo **chỗ mù**. Mục nào tự cho ≥ 50% thì không còn là chỗ mù — phải **vá**, hoặc **ĐO một lần cho thấy vì sao vá là sai**. Phép đo phải chạm **cả hai mặt** của cơ chế nghi ngờ (với một cổng: cả chặn oan **và** bỏ lọt) — đo một mặt rồi kết luận cho cả hai là chưa đo. Và **câu hỏi mình định đặt cho reviewer mà mình chưa tự trả lời thì không được gửi**: nó là chỗ mù đã có tên, tức là không còn là chỗ mù.",
+      "en": "A seal measures **blind spots**. Anything you rate at 50% or higher is not a blind spot — **patch it**, or **MEASURE once why patching would be wrong**. The measurement must touch **both sides** of the mechanism in doubt (for a gate: false alarms **and** misses) — measuring one side and concluding for both is not measuring. And **a question you plan to ask the reviewer that you have not answered yourself must not be sent**: it is a blind spot with a name, which means it is no longer blind."
+    },
+    "why": {
+      "vi": "Ở UOW-128 tôi ghi một lỗ là **P, 60%** rồi gọi reviewer mà không vá; reviewer tìm ra đúng nó. Tôi dựng luật này để chặn — và ở **chính UOW-129**, nơi luật ra đời, tôi ghi mục 3 là **P, 55%**, không vá, chỉ **viết một câu vì sao**: *\"siết lại là thiết kế tôi chưa đo được là đúng; siết sai sẽ đẻ báo động oan.\"* Câu ấy nghe hợp lý và **đã sai**: bản vá thật mất **một dòng**, và reviewer đo được rằng nó **không loại nhầm ca nào** trong cả 26 luật. Nỗi lo ấy kiểm chứng được trong vài phút, mà tôi đã không kiểm. **Cửa thoát 'viết một câu vì sao' là chỗ trú.** **Lần thứ ba (UOW-130):** tôi làm đúng chữ của luật — có lệnh, có số — nhưng phép đo chỉ chạm mặt **chặn oan** (`echo`), rồi tôi viết \"hướng sai an toàn\" cho cả cơ chế. Reviewer đo mặt **bỏ lọt** (biến+`eval`, `git -c alias`): phá dữ liệu thật. Và tôi đã **tự viết câu hỏi \"hướng sai nào nguy hiểm hơn?\" vào đề review** mà không tự trả lời. Đo nửa rồi dùng cho cả — câu chữ cũ của luật để chuyện ấy trôi qua.",
+      "en": "In UOW-128 I recorded a hole as **P, 60%**, called the reviewer without patching it, and the reviewer found exactly that. I wrote this rule to stop it — and in **UOW-129 itself**, where the rule was born, I recorded item 3 as **P, 55%**, did not patch it, and merely **wrote a sentence of reasoning**: *\"tightening it is a design I have not measured; tightening it wrongly would cause false alarms.\"* That sentence sounded reasonable and **was wrong**: the real fix was **one line**, and the reviewer measured that it rejects **none** of the 26 real rules. The worry was checkable in minutes and I did not check it. **The escape hatch 'write a sentence saying why' is a hiding place.** **Third time (UOW-130):** I obeyed the letter of the rule — a command, a number — but the measurement touched only the **false-alarm** side (`echo`), and I wrote \"the failure direction is safe\" for the whole mechanism. The reviewer measured the **miss** side (variables+`eval`, `git -c alias`): real data destroyed. And I had **written the question \"which failure direction is worse?\" into the review brief myself** without answering it. Measuring half and using it for the whole — the old wording let that through."
+    },
+    "source": "UOW-128 seal (2/6, the one correct P shipped unpatched) and UOW-129 seal item 3 (55%, P, not patched — the reviewer found it; the fix was one line). UOW-130 seal item 1: measured the false-alarm side only, concluded for both; the reviewer found the miss side (real data loss).",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Seal ghi \"đây có thể là P, 60%\" rồi gọi reviewer",
+          "en": "The seal records \"this may be a P, 60%\" and the reviewer is called"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Seal ghi 55% và **một câu giải thích vì sao không vá** — không có phép đo nào",
+          "en": "The seal records 55% and **a sentence of reasoning** for not patching — with no measurement"
+        },
+        "note": {
+          "vi": "Đúng thứ tôi làm ở UOW-129 và reviewer bắt được.",
+          "en": "Exactly what I did in UOW-129, and the reviewer found it."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Seal ghi 55% ⇒ vá ngay, seal ghi \"đã vá trước khi niêm\"",
+          "en": "The seal records 55% ⇒ patch it, and the seal records \"patched before sealing\""
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng dự đoán, cùng con số; khác ở chỗ nó dẫn tới hành động hay chỉ tới chữ.",
+          "en": "NEAR MISS: the same prediction at the same number; what differs is whether it leads to an action or only to words."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Seal ghi 55%, không vá, nhưng **chạy một lệnh** cho thấy bản vá loại nhầm 3 ca hợp lệ — có số, có lệnh",
+          "en": "The seal records 55%, does not patch, but **runs one command** showing the fix would reject 3 legitimate cases — a number, a command"
+        },
+        "note": {
+          "vi": "CA SÁT RANH của ca trên: cùng quyết định không vá; khác ở chỗ có phép ĐO hay chỉ có lý lẽ.",
+          "en": "NEAR MISS of the case above: the same decision not to patch; what differs is whether a MEASUREMENT exists or only an argument."
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Seal ghi 50%, chạy MỘT phép đo ở mặt chặn oan, rồi kết luận \"hướng sai an toàn\" cho cả cơ chế",
+          "en": "The seal records 50%, runs ONE measurement on the false-alarm side, then concludes \"the failure direction is safe\" for the whole mechanism"
+        },
+        "note": {
+          "vi": "UOW-130: đúng thứ tôi làm; reviewer tìm mặt còn lại.",
+          "en": "UOW-130: exactly what I did; the reviewer found the other side."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Seal ghi 50% ⇒ đo CẢ HAI mặt: `echo 'git reset --hard'` (chặn oan) **và** `eval` ghép chuỗi (bỏ lọt) — rồi mới kết luận",
+          "en": "The seal records 50% ⇒ measure BOTH sides: `echo 'git reset --hard'` (false alarm) **and** an `eval`-assembled command (miss) — then conclude"
+        },
+        "note": {
+          "vi": "CA SÁT RANH của ca trên: cùng một phép đo, khác ở chỗ nó chạm một mặt hay hai.",
+          "en": "NEAR MISS of the case above: the same measuring, differing in whether it touches one side or two."
+        }
+      }
+    ],
+    "refs": [
+      "process/writing-a-lesson-down-is-not-learning-it"
+    ]
+  },
+  {
+    "id": "process/never-approve-your-own-gate",
+    "family": "process",
+    "rank": 30,
+    "modality": "MUST_NOT",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Không bao giờ tự duyệt cổng của chính mình",
+      "en": "Never approve your own gate"
+    },
+    "statement": {
+      "vi": "Người xây không phán GATE 3 của chính mình. GATE 4 tự-SHIPPED chỉ áp khi CI xanh **và** rollback đã kiểm, và **không bao giờ** áp cho thao tác không hoàn tác hoặc hướng ra ngoài.",
+      "en": "The builder does not judge their own GATE 3. Self-shipping at GATE 4 applies only when CI is green **and** the rollback is verified, and **never** to an irreversible or outward-facing operation."
+    },
+    "why": {
+      "vi": "Chữ ký không chứng minh được ai đã cho phép nếu danh sách khoá do chính người ký ghi ra — đo được ở UOW-128: tác tử tự `signers --add` khoá của mình rồi tự ký, ra `SIGNED`, exit 0. Cùng hình dạng ở tầng con người: builder tự phán thì cổng không còn là cổng.",
+      "en": "A signature proves nothing about who allowed it if the key list was written by the signer — measured in UOW-128: the agent ran `signers --add` with its own key, signed, and got `SIGNED`, exit 0. The same shape at the human layer: a builder who judges their own work has removed the gate."
+    },
+    "source": "Memory: gate-review-delegation-2026-08-22, gate4-conditional-delegation; and the UOW-128 self-signing measurement.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Builder tự viết \"GATE 3 ĐẠT\" vào sổ sách sau khi tự chạy test",
+          "en": "The builder writes \"GATE 3 PASSED\" into the bookkeeping after running their own tests"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Builder chạy test, niêm seal, rồi reviewer độc lập phán — sổ sách ghi phán quyết ấy",
+          "en": "The builder runs the tests, seals a prediction, and an independent reviewer judges — the bookkeeping records that verdict"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng builder, cùng bộ test xanh; khác ở chỗ ai ký vào chữ \"ĐẠT\".",
+          "en": "NEAR MISS: the same builder with the same green tests; what differs is who signs the word \"pass\"."
+        }
+      }
+    ],
+    "refs": [
+      "review/do-not-self-certify-after-your-own-patch"
+    ]
+  },
+  {
+    "id": "process/do-not-sweep-everything-into-one-commit",
+    "family": "process",
+    "rank": 40,
+    "modality": "MUST_NOT",
+    "enforcement": "warn",
+    "title": {
+      "vi": "Không `git commit -a` — nó quét cả thứ phải nằm ở commit riêng",
+      "en": "No `git commit -a` — it sweeps in what belongs in its own commit"
+    },
+    "statement": {
+      "vi": "Stage tường minh bằng `git add <đường dẫn>`. `con-thuyen/**` phải là commit RIÊNG; `git commit -a` quét nó vào cùng với mã và làm đỏ cổng footprint.",
+      "en": "Stage explicitly with `git add <path>`. `con-thuyen/**` must be its OWN commit; `git commit -a` sweeps it in with the code and turns the footprint gate red."
+    },
+    "why": {
+      "vi": "Tôi đã vi phạm ở cả UOW-124 lẫn UOW-127: commit seal chung với mã, phải `git reset --soft` rồi force-push để tách ra. Cổng footprint bắt được, nhưng chỉ sau khi đã đẩy đi.",
+      "en": "I broke this in both UOW-124 and UOW-127: the seal committed together with the code, then split with `git reset --soft` and a force-push. The footprint gate caught it, but only after it had been pushed."
+    },
+    "source": "UOW-124 and UOW-127, 2026-09-17; footprint gate `bolt/*` in CI.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "git\\s+commit(?:\\s+-\\S*)*\\s+-\\S*a"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git commit -am 'sổ sách'` — quét cả cây",
+          "en": "`git commit -am 'bookkeeping'` — sweeps the whole tree"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git commit -am 'sổ sách'"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "`git add ai-workspace && git commit -m 'sổ sách'` — stage tường minh",
+          "en": "`git add ai-workspace && git commit -m 'bookkeeping'` — staged explicitly"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git add ai-workspace && git commit -m 'sổ sách'"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng một commit sổ sách; khác đúng ở chỗ ai chọn tệp — người hay `-a`.",
+          "en": "NEAR MISS: the same bookkeeping commit; what differs is who picks the files — you, or `-a`."
+        }
+      }
+    ],
+    "refs": [
+      "process/never-approve-your-own-gate"
+    ]
+  },
+  {
+    "id": "process/say-what-was-not-measured",
+    "family": "process",
+    "rank": 50,
+    "modality": "MUST",
+    "enforcement": "advice",
+    "title": {
+      "vi": "Nói rõ cái CHƯA đo — tài liệu nói quá là một họ lỗi P1",
+      "en": "State what was NOT measured — documentation that overclaims is a P1 family"
+    },
+    "statement": {
+      "vi": "Mọi báo cáo, README, runbook phải có một mục nói thẳng: cái gì chưa đo, cái gì không chống được. Không khai thứ chưa chạy như thứ đã chạy.",
+      "en": "Every report, README and runbook carries a section saying plainly: what was not measured, what is not defended against. Never present something unrun as run."
+    },
+    "why": {
+      "vi": "\"Tài liệu nói quá\" đã là P1 **bốn lần** trong dự án này. Lần gần nhất: câu *\"`--require-anchor` refuses it\"* trong README đọc như đã chặn cả họ tấn công \"vá cho khớp\", trong khi nó chỉ từ chối chuỗi chưa neo — reviewer chỉ đích danh. Trước đó: `accept.mjs` in \"chữ ký là dự kiến\" vào gói ĐÃ ký thật.",
+      "en": "\"Documentation that overclaims\" has been a P1 **four times** in this project. Most recently: *\"`--require-anchor` refuses it\"* in the README read as if the whole patch-to-agree attack family were blocked, when it only refuses an unanchored chain — the reviewer named it. Before that: `accept.mjs` printed \"signing is planned\" into a genuinely signed packet."
+    },
+    "source": "Four P1 occurrences; the fourth in UOW-128 review round 2, 2026-09-17.",
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Bảng README ghi \"cờ này từ chối nó\" trong khi cờ chỉ từ chối một ca hẹp hơn",
+          "en": "A README table says \"this flag refuses it\" when the flag refuses a narrower case"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "Báo cáo ghi \"không phải sửa ca cũ nào\" mà thật ra đã sửa hai ca",
+          "en": "A report says \"no old case needed changing\" when two were changed"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Bảng README tách hai dòng: một dòng cho ca cờ chặn được, một dòng cho ca vẫn exit 0",
+          "en": "The README table splits into two rows: one for what the flag refuses, one for what still exits 0"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng bảng, cùng cờ; khác ở chỗ ranh giới có được vẽ ra hay bị làm mờ.",
+          "en": "NEAR MISS: the same table and the same flag; what differs is whether the boundary is drawn or blurred."
+        }
+      }
+    ],
+    "refs": [
+      "evidence/print-only-what-was-verified"
+    ]
+  }
+]

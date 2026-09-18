@@ -1,0 +1,300 @@
+[
+  {
+    "id": "safety/no-hard-reset-over-uncommitted-work",
+    "family": "safety",
+    "rank": 10,
+    "modality": "MUST_NOT",
+    "enforcement": "block",
+    "title": {
+      "vi": "Không `reset --hard` / `checkout --` / `clean -f` khi cây làm việc có sửa đổi chưa commit",
+      "en": "Never `reset --hard`, `checkout --` or `clean -f` over uncommitted work"
+    },
+    "statement": {
+      "vi": "Trong cây làm việc có sửa đổi chưa commit, không chạy `git reset --hard`, `git checkout -- <path>` hay `git clean -f`. Kiểm rollback chạy trong worktree vứt đi (`git worktree add --detach`), hoặc dùng `git revert --abort`.",
+      "en": "In a working tree with uncommitted changes, do not run `git reset --hard`, `git checkout -- <path>` or `git clean -f`. Verify a rollback in a throwaway worktree (`git worktree add --detach`), or use `git revert --abort`."
+    },
+    "why": {
+      "vi": "Tệp chưa từng được `git add` thì KHÔNG có object trong git — mất là mất hẳn, `fsck` không cứu được. Ngày 17/09 tôi chạy `git reset --hard` sau một phép kiểm rollback và xoá mất hai tệp harness người đang sửa dở; `critic.rb` dựng lại được từ một diff tôi tình cờ đã in ra, `ollama.rb` (71 dòng) **mất vĩnh viễn**.",
+      "en": "A file that was never `git add`ed has no object in git — losing it is final, and `fsck` cannot help. On 2026-09-17 I ran `git reset --hard` after a rollback check and destroyed two harness files the user had in progress; `critic.rb` was reconstructed from a diff I happened to have printed, `ollama.rb` (71 lines) is gone for good."
+    },
+    "source": "2026-09-17, D:\\KIAI: ollama.rb (71 lines) permanently destroyed. Memory: no-reset-hard-with-foreign-changes.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "git\\s+(?:reset(?:\\s+-\\S+)*\\s+--hard|checkout(?:\\s+-\\S+)*\\s+--\\s|clean(?:\\s+-\\S+)*\\s+-[A-Za-z]*f)"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "ĐÚNG lệnh đã xoá mất ollama.rb ngày 17/09 — có cờ `-q` chen giữa",
+          "en": "The exact command that destroyed ollama.rb on 2026-09-17 — with a `-q` flag in between"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git reset -q --hard e6ba318"
+        },
+        "note": {
+          "vi": "Bản đầu của chính luật này KHÔNG bắt được nó, vì regex đòi `reset` dính liền `--hard`. Luật phải được thử lại bằng LỆNH THẬT của sự cố, không phải bằng lệnh mình tưởng tượng ra.",
+          "en": "The first version of this very rule did NOT catch it, because the regex wanted `reset` directly followed by `--hard`. A rule has to be replayed against the REAL command from the incident, not the one you imagine."
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git reset --hard HEAD~1` để bỏ một commit thử",
+          "en": "`git reset --hard HEAD~1` to drop a trial commit"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git reset --hard HEAD~1"
+        }
+      },
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git clean -fd` để dọn cây sau khi kiểm",
+          "en": "`git clean -fd` to tidy the tree after a check"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git clean -fd"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "`git reset --soft HEAD~1` để tách một commit — cây làm việc không bị đụng",
+          "en": "`git reset --soft HEAD~1` to split a commit — the working tree is untouched"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git reset --soft HEAD~1"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng lệnh `git reset`, khác đúng một cờ, và khác hẳn về hậu quả.",
+          "en": "NEAR MISS: the same `git reset` command, one flag apart, and a completely different consequence."
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "`git revert --abort` để huỷ một phép kiểm rollback",
+          "en": "`git revert --abort` to undo a rollback check"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git revert --abort"
+        }
+      }
+    ],
+    "refs": [
+      "safety/rollback-in-a-throwaway-worktree"
+    ]
+  },
+  {
+    "id": "safety/rollback-in-a-throwaway-worktree",
+    "family": "safety",
+    "rank": 20,
+    "modality": "MUST",
+    "enforcement": "warn",
+    "title": {
+      "vi": "Kiểm rollback trong worktree vứt đi, không trong cây đang làm việc",
+      "en": "Verify a rollback in a throwaway worktree, never in the working tree"
+    },
+    "statement": {
+      "vi": "GATE 4 đòi kiểm rollback. Phép kiểm ấy chạy trong `git worktree add --detach <tmp>` rồi gỡ, không bao giờ chạm cây đang làm việc.",
+      "en": "GATE 4 requires a verified rollback. Run that check in `git worktree add --detach <tmp>` and remove it afterwards; never touch the working tree."
+    },
+    "why": {
+      "vi": "Cây đang làm việc có thể chứa sửa đổi của người mà tác tử không biết. Kiểm rollback tại chỗ là cách nhanh nhất để mất chúng — đã xảy ra 17/09.",
+      "en": "The working tree may hold the user's changes the agent does not know about. Checking a rollback in place is the fastest way to lose them — it happened on 2026-09-17."
+    },
+    "source": "2026-09-17 incident; adopted as the procedure in runbook-UOW-124 and every UoW since.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "git\\s+revert\\s+(-n|--no-commit|-m\\s*1)"
+      },
+      {
+        "signal": "command",
+        "op": "not_matches",
+        "value": "worktree"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git revert -n -m 1 <merge>` ngay trong cây đang làm việc",
+          "en": "`git revert -n -m 1 <merge>` straight in the working tree"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git revert -n -m 1 e6ba318"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Dựng worktree tạm rồi revert trong đó",
+          "en": "Add a throwaway worktree, then revert inside it"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git worktree add --detach /tmp/rb e6ba318 && cd /tmp/rb && git revert -n -m 1 e6ba318"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng lệnh `git revert -n -m 1`, chỉ khác chỗ nó chạy.",
+          "en": "NEAR MISS: the same `git revert -n -m 1`, differing only in where it runs."
+        }
+      }
+    ],
+    "refs": [
+      "safety/no-hard-reset-over-uncommitted-work",
+      "safety/remove-junction-before-worktree-remove"
+    ]
+  },
+  {
+    "id": "safety/remove-junction-before-worktree-remove",
+    "family": "safety",
+    "rank": 30,
+    "modality": "MUST",
+    "enforcement": "warn",
+    "title": {
+      "vi": "Gỡ junction/symlink TRƯỚC khi `git worktree remove`",
+      "en": "Remove a junction or symlink BEFORE `git worktree remove`"
+    },
+    "statement": {
+      "vi": "Trước khi gỡ một worktree, kiểm junction bằng `ls -la` (thấy `->`), gỡ bằng `rmdir`, rồi mới `git worktree remove`. Sau khi dọn, đếm lại `node_modules` để chắc không xoá nhầm qua junction.",
+      "en": "Before removing a worktree, check for junctions with `ls -la` (look for `->`), remove them with `rmdir`, and only then run `git worktree remove`. Afterwards count `node_modules` to confirm nothing was deleted through the junction."
+    },
+    "why": {
+      "vi": "Trên Windows, `git worktree remove --force` đi xuyên junction và xoá cả thứ nằm ở đầu kia. Đã xảy ra HAI lần (29/08 và 03/09).",
+      "en": "On Windows, `git worktree remove --force` follows a junction and deletes what sits on the other side. It has happened TWICE (2026-08-29 and 2026-09-03)."
+    },
+    "source": "Two incidents, 2026-08-29 and 2026-09-03. Memory: worktree-junction-remove-order.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "git\\s+worktree\\s+remove"
+      },
+      {
+        "signal": "command",
+        "op": "not_matches",
+        "value": "ls\\s+-la|rmdir"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git worktree remove --force D:/KIAI-128` mà chưa kiểm junction",
+          "en": "`git worktree remove --force D:/KIAI-128` without checking for a junction first"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git worktree remove --force D:/KIAI-128"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "Kiểm junction rồi mới gỡ, trong cùng một lệnh",
+          "en": "Check for a junction first, then remove, in the same command"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "ls -la D:/KIAI-128 | grep -- '->' ; git worktree remove --force D:/KIAI-128"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng lệnh gỡ worktree, chỉ thêm phép kiểm đứng trước.",
+          "en": "NEAR MISS: the same worktree removal, with the check standing in front of it."
+        }
+      }
+    ],
+    "refs": [
+      "safety/rollback-in-a-throwaway-worktree"
+    ]
+  },
+  {
+    "id": "safety/outward-actions-need-a-standing-yes",
+    "family": "safety",
+    "rank": 40,
+    "modality": "MUST",
+    "enforcement": "warn",
+    "title": {
+      "vi": "Thao tác hướng ra ngoài cần lời đồng ý còn hiệu lực",
+      "en": "An outward-facing action needs a yes that is still in force"
+    },
+    "statement": {
+      "vi": "Đẩy lên repo công khai, deploy, gửi ra dịch vụ ngoài, xoá nhánh từ xa, force-push: chỉ làm khi người đã đồng ý cho ĐÚNG việc đó. Đồng ý ở một bối cảnh không nối sang bối cảnh sau.",
+      "en": "Pushing to a public repo, deploying, sending to an external service, deleting a remote branch, force-pushing: only with a yes for that specific thing. Approval in one context does not carry into the next."
+    },
+    "why": {
+      "vi": "Uỷ quyền review cho cặp x↔KIAI **không** nống sang thao tác không hoàn tác hoặc hướng ra ngoài. Gửi ra ngoài là công bố: nội dung có thể bị lưu hoặc lập chỉ mục kể cả khi sau đó xoá đi.",
+      "en": "The review delegation to the x↔KIAI pair does NOT extend to irreversible or outward-facing operations. Sending something out publishes it: it may be cached or indexed even if deleted later."
+    },
+    "source": "Memory: gate-review-delegation-2026-08-22 and gate4-conditional-delegation.",
+    "applies_when": [
+      {
+        "signal": "tool",
+        "op": "eq",
+        "value": "Bash"
+      },
+      {
+        "signal": "command",
+        "op": "matches",
+        "value": "push\\s+(--force|-f)\\b|push\\s+.*--delete|gh\\s+release\\s+create|npm\\s+publish"
+      }
+    ],
+    "examples": [
+      {
+        "verdict": "violates",
+        "text": {
+          "vi": "`git push --force origin main` vì lịch sử trông lộn xộn",
+          "en": "`git push --force origin main` because the history looks untidy"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git push --force origin main"
+        }
+      },
+      {
+        "verdict": "complies",
+        "text": {
+          "vi": "`git push origin bolt/UOW-129` — đẩy thường lên chính nhánh của mình",
+          "en": "`git push origin bolt/UOW-129` — an ordinary push to one's own branch"
+        },
+        "action": {
+          "tool": "Bash",
+          "command": "git push origin bolt/UOW-129"
+        },
+        "note": {
+          "vi": "CA SÁT RANH: cùng `git push`, không có `--force` thì không viết đè lịch sử của ai.",
+          "en": "NEAR MISS: the same `git push`; without `--force` it overwrites nobody's history."
+        }
+      }
+    ],
+    "refs": []
+  }
+]

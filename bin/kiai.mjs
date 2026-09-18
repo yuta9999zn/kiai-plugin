@@ -23,9 +23,16 @@
 //   rules search "<query>" [--limit N]      offline, deterministic lookup (vi + en)
 //   rules check --tool T [--command C] [--path P] [--event E] [--action JSON] [--json]
 //                              does the action I am about to take break a rule? exit 2 on a `block`
+//   wrap --tool NAME [--input JSON] [--session ID] [--no-snapshot] -- <command...>
+//                              for agents that have no hooks: record PreToolUse, ask the rules
+//                              (a `block` refuses to run, exit 2), run the command, record PostToolUse
+//   rules install [--force]    seed .kiai/rules/ from the starter set this plugin ships (init does it too)
+//   hooks --agent generic      print the payload contract any agent can pipe into `record`
+//   hooks --agent cursor       print a Cursor hooks.json (UNVERIFIED — see adapters/cursor/)
 //   rules lint [--json]        the gate on the rule files themselves — schema, references,
 //                              precedence, and every example replayed through the engine
 import fs from 'node:fs';
+import { spawnSync, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -107,6 +114,62 @@ function hooksBlock({ rules = false } = {}) {
 export const CODEX_HOOK_EVENTS = [
   'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse',
   'PreCompact', 'PostCompact', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt', 'SessionEnd',
+];
+
+/** The rule set this plugin ships. `kiai init` seeds it; `kiai rules install` refreshes it. */
+export const STARTER_RULES_DIR = path.join(PLUGIN_ROOT, 'rules');
+
+/**
+ * Copy the starter rules into <root>/.kiai/rules/. Never overwrites unless asked: a repository's rules
+ * are reviewed like code, and a silent refresh would undo a review. Returns what happened.
+ */
+export function installRules(root, { force = false } = {}) {
+  const dst = rulesDir(root);
+  const names = fs.existsSync(STARTER_RULES_DIR) ? fs.readdirSync(STARTER_RULES_DIR).filter((f) => f.endsWith('.json')).sort() : [];
+  if (!names.length) return { installed: [], skipped: [], reason: `no starter rules at ${STARTER_RULES_DIR}` };
+  fs.mkdirSync(dst, { recursive: true });
+  const installed = []; const skipped = [];
+  for (const n of names) {
+    const to = path.join(dst, n);
+    if (fs.existsSync(to) && !force) { skipped.push(n); continue; }
+    fs.copyFileSync(path.join(STARTER_RULES_DIR, n), to);
+    installed.push(n);
+  }
+  return { installed, skipped, reason: null };
+}
+
+/**
+ * The contract any agent can meet without a hook system: pipe this JSON into `kiai record <Event>`.
+ * Measured 2026-09-18: `buildRecord` reads exactly these fields and nothing else.
+ */
+export const GENERIC_CONTRACT = {
+  // Derived, not retyped: review round 1 of UOW-130 found this list one event short of HOOK_EVENTS.
+  events: [...HOOK_EVENTS],
+  required: {
+    session_id: 'a stable id for the conversation — one per session, the same value on every event',
+    hook_event_name: 'one of `events` above; must equal the Event argument you pass on the command line',
+    cwd: 'absolute path of the repository (or a directory inside it)',
+    tool_name: 'what the agent used: Bash, Edit, Write, Read, or your own tool name',
+    tool_input: 'object — for a shell tool, {command}; for a file tool, {file_path, content|old_string|new_string}',
+    tool_use_id: 'an id shared by the PreToolUse and the PostToolUse of one call',
+  },
+  optional: {
+    tool_response: 'PostToolUse only — what came back; long content is summarised, secrets are redacted',
+    error: 'PostToolUseFailure only — the failure text',
+  },
+  example: {
+    session_id: 'sess-2026-09-18-a1', hook_event_name: 'PreToolUse', cwd: '/path/to/repo',
+    tool_name: 'Bash', tool_input: { command: 'npm test' }, tool_use_id: 'call-0007',
+  },
+};
+
+const CURSOR_HOOK_WARNING = [
+  'UNVERIFIED. No Cursor client was available on the machine that wrote this adapter (2026-09-18), so',
+  'the payload field names below come from Cursor\'s published hooks documentation, not from a hook',
+  'seen firing. adapters/cursor/kiai-cursor-hook.mjs is written to be permissive: it maps what it',
+  'recognises, records an `unknown` tool for what it does not, ALWAYS answers {"permission":"allow"}',
+  'unless a `block` rule matches, and never exits non-zero — a translator must not be the reason',
+  'Cursor stops working. If you have Cursor, run one session and `kiai status`: records mean it fired.',
 ];
 
 export const CODEX_HOOK_WARNING = [
@@ -216,6 +279,10 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
         fs.writeFileSync(asFile, ALLOWED_SIGNERS_HEADER);
         stdout.write(`Created: ${asFile} (empty — nobody may approve yet)\n`);
       }
+      // A developer who installs the plugin gets the `rules` command; without this they would get the
+      // lock and no key — measured 2026-09-18 on a fresh marketplace install.
+      const seeded = installRules(root);
+      if (seeded.installed.length) stdout.write(`Created: ${rulesDir(root)} (${seeded.installed.length} starter rule file(s) — \`kiai rules list\` to read them, they are reviewed like code)\n`);
       stdout.write('Enable the black box for this repo:\n');
       stdout.write(`  claude --plugin-dir "${PLUGIN_ROOT}"\n`);
       stdout.write('  (or run `node kiai.mjs hooks` and paste the block into .claude/settings.json)\n');
@@ -412,6 +479,13 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
       const plain = (v, max = 200) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, max);
       const lang = args.lang === 'vi' ? 'vi' : 'en';
 
+      if (sub === 'install') {
+        const r = installRules(root, { force: Boolean(args.force) });
+        if (r.reason) { stderr.write(`kiai rules install: ${r.reason}\n`); return 2; }
+        for (const n of r.installed) stdout.write(`installed ${rel}/${n}\n`);
+        for (const n of r.skipped) stdout.write(`kept     ${rel}/${n} (exists; --force to overwrite — it is reviewed like code)\n`);
+        return 0;
+      }
       if (!present && sub !== 'lint') {
         stderr.write(`kiai rules: no ${rel}/ in this repository — there are no rules here to follow\n`);
         return 2;
@@ -582,6 +656,108 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
           return 2;
       }
     }
+    case 'wrap': {
+      // A snapshot of the working tree — tracked AND untracked, .gitignore respected — written as a
+      // dangling tree object BEFORE the command runs. It costs ~90 ms on this repository and it is
+      // the one thing here that a cleverly phrased command cannot get around.
+      //
+      // Review round 1 of UOW-130 phrased `git reset --hard` as `A="git res"; B="et --har"; eval …`
+      // and as `git -c alias.nuke='reset --hard' nuke`. Both walked through the rules (which match
+      // the command STRING) and both destroyed uncommitted work in a test repo. String matching is a
+      // tripwire, not a wall. The snapshot is the wall: whatever the command does to the tree, the
+      // tree as it was is still in .git/objects, and `git restore --source=<tree> -- <path>` brings a
+      // file back. This is exactly the harm the rule was written for — ollama.rb, 71 lines, gone
+      // because it had never been added.
+      const snapshotTree = () => {
+        try {
+          if (execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim() !== 'true') return null;
+          const idx = path.join(os.tmpdir(), `kiai-snap-${process.pid}-${Date.now().toString(36)}`);
+          const env = { ...process.env, GIT_INDEX_FILE: idx };
+          try {
+            // Everything except the black box itself: .kiai/flight/*.jsonl is committed by design, and
+            // the PreToolUse record written between the two snapshots would make every command look
+            // like it changed the tree (TS-130-12 caught exactly that).
+            execFileSync('git', ['add', '-A', '--', '.', ':(exclude).kiai'], { cwd, env, stdio: ['ignore', 'ignore', 'ignore'], timeout: 20000 });
+            return execFileSync('git', ['write-tree'], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000 }).trim() || null;
+          } finally {
+            try { fs.unlinkSync(idx); } catch { /* never existed */ }
+          }
+        } catch {
+          return null; // no snapshot is reported, never invented
+        }
+      };
+      // The one integration every agent can meet: a shell command. Record, ask the rules, run, record.
+      // This adds NO permission the calling harness does not already have — it only writes the
+      // flight record and refuses what the rules refuse. The command's own exit code is passed through.
+      const sep = argv.indexOf('--');
+      const cmdv = sep === -1 ? [] : argv.slice(sep + 1);
+      if (!cmdv.length) { stderr.write('usage: kiai wrap --tool NAME [--input JSON] [--session ID] -- <command...>\n'); return 2; }
+      const tool = String(args.tool || 'Bash');
+      let input = { command: cmdv.join(' ') };
+      if (typeof args.input === 'string') { try { input = JSON.parse(args.input); } catch { stderr.write('kiai wrap --input: not valid JSON\n'); return 2; } }
+      const session = String(args.session || process.env.KIAI_SESSION || `wrap-${new Date().toISOString().slice(0, 10)}-${process.pid}`);
+      const useId = `wrap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const base = { session_id: session, cwd, tool_name: tool, tool_input: input, tool_use_id: useId };
+      const rec = (ev, extra = {}) => { try { appendRecord(root, buildRecord({ ...base, hook_event_name: ev, ...extra }, { cwd, root })); } catch (e) { logError(root, e); } };
+
+      const snapT0 = Date.now();
+      const snapshot = args['no-snapshot'] ? null : snapshotTree();
+      const snapMs = Date.now() - snapT0;
+      // Measured 2026-09-18: ~90 ms on this repository, 10–15 s on 8 000 un-ignored files (a stray
+      // node_modules/), 556 ms the moment that directory is in .gitignore. A developer who meets the
+      // slow case will switch the snapshot off, and then the wall is gone — so say the one thing that
+      // fixes it, once, instead of letting them find --no-snapshot first.
+      rec('PreToolUse');
+      const { rules, problems } = loadRules(root);
+      if (problems.length) stderr.write(`kiai wrap: ${problems.length} rule file problem(s) — those rules are NOT enforced; run \`kiai rules lint\`\n`);
+      const { decision, hits } = evaluate(rules, { tool, command: typeof input.command === 'string' ? input.command : cmdv.join(' '), path: input.file_path });
+      if (decision === 'block') {
+        const r = hits[0];
+        stderr.write(`kiai wrap: BLOCKED BY ${r.id} — ${(r.title && (r.title.en || r.title.vi)) || ''}\n  ${(r.why && (r.why.en || r.why.vi)) || ''}\n`);
+        rec('PostToolUseFailure', { error: `blocked by rule ${r.id}` });
+        return 2;
+      }
+      for (const r of hits) if (r.enforcement === 'warn') stderr.write(`kiai wrap: WARNING ${r.id} — ${(r.title && (r.title.en || r.title.vi)) || ''}\n`);
+
+      const run = spawnSync(cmdv[0], cmdv.slice(1), { cwd, stdio: ['inherit', 'pipe', 'pipe'], encoding: 'utf8', shell: false, maxBuffer: 8 << 20 });
+      if (run.stdout) stdout.write(run.stdout);
+      if (run.stderr) stderr.write(run.stderr);
+      const code = run.status === null ? 1 : run.status;
+      if (run.error) {
+        rec('PostToolUseFailure', { error: String(run.error.message || run.error) });
+        stderr.write(`kiai wrap: could not run ${cmdv[0]}: ${run.error.message}\n`);
+        return 127;
+      }
+      // What came back is summarised by buildRecord, never stored whole: its size and the exit code.
+      rec(code === 0 ? 'PostToolUse' : 'PostToolUseFailure', code === 0
+        ? { tool_response: { exit_code: 0, stdout_bytes: Buffer.byteLength(run.stdout || ''), stderr_bytes: Buffer.byteLength(run.stderr || '') } }
+        : { error: `exit ${code}`, tool_response: { exit_code: code, stderr_bytes: Buffer.byteLength(run.stderr || '') } });
+      // Did the command change the working tree? Then the snapshot matters, and it goes on the record
+      // as a note — `summarizeResponse` keeps only sizes, so a note is the honest channel. A command
+      // that changed nothing leaves no extra record: the chain must not fill with noise.
+      if (snapshot) {
+        const afterT0 = Date.now();
+        const after = snapshotTree();
+        const totalMs = snapMs + (Date.now() - afterT0);
+        // Both halves together: review round 3 found a machine where each half stayed under 2 s while
+        // a wrap took 2.4–3.4 s, and the hint never fired for exactly the developer it is for.
+        if (totalMs > 2000) {
+          stderr.write(`kiai wrap: the working-tree snapshots took ${(totalMs / 1000).toFixed(1)} s of this call — a large directory is probably missing from .gitignore (node_modules/, vendor/, build output); ignoring it brings this under a second. --no-snapshot turns the snapshot off, and with it the only recovery this command offers.\n`);
+        }
+        // Review round 2 of UOW-130: `rm -rf .git` inside the command made `after` null and this
+        // branch said nothing — the same silence as a directory that was never a repository. The
+        // "before" side already refuses to invent a snapshot; the "after" side must refuse to invent
+        // an all-clear. Not a failure exit: the command's own code still tells the truth about it.
+        if (after === null) {
+          stderr.write(`kiai wrap: cannot tell whether the working tree changed — git no longer recognises a repository here (was it removed by this command?); the snapshot taken before was ${snapshot}\n`);
+        } else if (after !== snapshot) {
+          const line = `working tree changed by ${tool} ${cell(cmdv.join(' '), 200)} — tree before: ${snapshot}; recover a file with: git restore --source=${snapshot} -- <path>`;
+          try { appendRecord(root, noteRecord(line, { cwd, by: 'kiai wrap' })); } catch (e) { logError(root, e); }
+          stderr.write(`kiai wrap: ${line}\n`);
+        }
+      }
+      return code;
+    }
     case 'status': {
       const records = readAll(root);
       const v = verifyChain(root);
@@ -642,6 +818,22 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
       const agent = args.agent && args.agent !== true ? String(args.agent).toLowerCase() : 'claude';
       if (agent === 'claude' || agent === 'claude-code') {
         stdout.write(JSON.stringify(hooksBlock({ rules: Boolean(args.rules) }), null, 2) + '\n');
+        return 0;
+      }
+      if (agent === 'generic' || agent === 'any' || agent === 'llm') {
+        stdout.write(JSON.stringify(GENERIC_CONTRACT, null, 2) + '\n');
+        stdout.write(`\n# pipe it: echo '<json>' | node "${PLUGIN_ROOT.replace(/\\/g, '/')}/bin/kiai.mjs" record PreToolUse\n`);
+        stdout.write(`# or let the CLI do all of it: node "${PLUGIN_ROOT.replace(/\\/g, '/')}/bin/kiai.mjs" wrap --tool Bash --session <id> -- <command>\n`);
+        return 0;
+      }
+      if (agent === 'cursor') {
+        for (const line of CURSOR_HOOK_WARNING) stderr.write(`kiai hooks --agent cursor: ${line}\n`);
+        const script = `${PLUGIN_ROOT.replace(/\\/g, '/')}/adapters/cursor/kiai-cursor-hook.mjs`;
+        const one = (ev) => [{ command: `node "${script}" ${ev}` }];
+        stdout.write(JSON.stringify({ version: 1, hooks: {
+          beforeShellExecution: one('beforeShellExecution'), beforeMCPExecution: one('beforeMCPExecution'),
+          afterFileEdit: one('afterFileEdit'), stop: one('stop'),
+        } }, null, 2) + '\n');
         return 0;
       }
       if (agent === 'codex' || agent === 'codex-cli') {
