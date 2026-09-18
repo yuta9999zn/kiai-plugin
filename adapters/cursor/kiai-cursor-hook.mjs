@@ -36,9 +36,18 @@ function readStdin() {
   try { return process.stdin.isTTY ? '' : fs.readFileSync(0, 'utf8'); } catch { return ''; }
 }
 
+/** Cursor 3.19.7 fills workspace_roots with folder.uri.path — on Windows that is "/d:/tmp/repo", a URI path, not a filesystem path. */
+function fromUriPath(p) {
+  const s = String(p || '');
+  return /^\/[A-Za-z]:\//.test(s) ? s.slice(1) : s;
+}
+
 /** Cursor event → KIAI event + tool. Anything else becomes an `unknown` PostToolUse so it is at least seen. */
 function translate(ev, h) {
-  const cwd = (Array.isArray(h.workspace_roots) && h.workspace_roots[0]) || h.cwd || process.cwd();
+  // `cwd` is the shell's working directory (a real path, present on shell events); workspace_roots is the
+  // wrapper Cursor adds to every event (measured 2026-09-19 in Cursor 3.19.7's own bundle: {...event,
+  // session_id, hook_event_name, cursor_version, workspace_roots, user_email, transcript_path}).
+  const cwd = h.cwd || (Array.isArray(h.workspace_roots) && fromUriPath(h.workspace_roots[0])) || process.cwd();
   const session = String(h.conversation_id || h.session_id || 'cursor');
   const useId = String(h.generation_id || h.tool_use_id || `cursor-${Date.now().toString(36)}`);
   const base = { session_id: session, cwd, tool_use_id: useId };

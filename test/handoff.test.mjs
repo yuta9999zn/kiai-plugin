@@ -286,6 +286,29 @@ test('TS-130-08 cursor hook: a recognised payload is recorded and allowed; a blo
   assert.deepEqual(events(root, 'cur-1'), ['tool_call', 'tool_call'], 'the refused attempt is on the record too');
 });
 
+test('TS-130-17 cursor hook on the payload shape Cursor 3.19.7 really sends: root from workspace_roots alone, deny, and no user_email in any record', needGit, async () => {
+  // Shape read from Cursor 3.19.7's workbench bundle (Hooks Service), 2026-09-19:
+  //   { ...eventFields, session_id, hook_event_name, cursor_version, workspace_roots: folders.map(f => f.uri.path), user_email, transcript_path }
+  // and folder.uri.path on Windows is "/d:/tmp/repo" — a URI path. The hook is run from OUTSIDE the
+  // repository with no `cwd` field, so only a correctly normalised workspace_roots can find .kiai/.
+  const root = await freshRepo();
+  const uriPath = process.platform === 'win32' ? '/' + root.replace(/\\/g, '/') : root;
+  const outside = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'kiai-cursor-outside-')));
+  const wrap = (fields) => JSON.stringify({ session_id: 'conv-real-1', cursor_version: '3.19.7', workspace_roots: [uriPath], user_email: 'someone@example.com', transcript_path: path.join(outside, 't.jsonl'), ...fields });
+  const a = await run(CURSOR, ['beforeShellExecution'], { cwd: outside, input: wrap({ hook_event_name: 'beforeShellExecution', conversation_id: 'conv-real-1', generation_id: 'gen-1', command: 'git status --short' }) });
+  assert.deepEqual(JSON.parse(a.stdout), { permission: 'allow' });
+  const b = await run(CURSOR, ['beforeShellExecution'], { cwd: outside, input: wrap({ hook_event_name: 'beforeShellExecution', conversation_id: 'conv-real-1', generation_id: 'gen-2', command: 'git reset --hard HEAD~1', cwd: root }) });
+  assert.equal(JSON.parse(b.stdout).permission, 'deny', 'the real shape still reaches the rules');
+  const c = await run(CURSOR, ['afterFileEdit'], { cwd: outside, input: wrap({ hook_event_name: 'afterFileEdit', conversation_id: 'conv-real-1', file_path: path.join(root, 'notes.txt'), edits: [{ old_string: 'a', new_string: 'b' }] }) });
+  assert.deepEqual(JSON.parse(c.stdout), { permission: 'allow' });
+  const d = await run(CURSOR, ['stop'], { cwd: outside, input: wrap({ hook_event_name: 'stop', conversation_id: 'conv-real-1', status: 'completed' }) });
+  assert.deepEqual(JSON.parse(d.stdout), { permission: 'allow' });
+  assert.deepEqual(events(root, 'conv-real-1'), ['tool_call', 'tool_call', 'tool_result', 'stop'], 'all four landed in the repository named only by workspace_roots');
+  const raw = fs.readdirSync(path.join(root, '.kiai', 'flight')).flatMap((w) => fs.readdirSync(path.join(root, '.kiai', 'flight', w)).map((f) => fs.readFileSync(path.join(root, '.kiai', 'flight', w, f), 'utf8'))).join('');
+  assert.doesNotMatch(raw, /someone@example\.com/, 'user_email is in every Cursor payload and must never be in a record');
+  assert.doesNotMatch(raw, /t\.jsonl/, 'nor the transcript path');
+});
+
 test('TS-130-09 cursor hook never breaks the editor: junk, unknown events and no repository all answer allow, exit 0', needGit, async () => {
   const root = await freshRepo();
   for (const [ev, input] of [['beforeShellExecution', 'not json'], ['beforeShellExecution', '[1,2]'], ['somethingNew', JSON.stringify({ cwd: root })], ['stop', JSON.stringify({ conversation_id: 'cur-2', cwd: root })]]) {
@@ -301,10 +324,10 @@ test('TS-130-09 cursor hook never breaks the editor: junk, unknown events and no
   assert.equal(JSON.parse(r.stdout).permission, 'allow');
 });
 
-test('TS-130-10 hooks --agent cursor prints a hooks.json pointing every event at the translator, and warns it is unverified', async () => {
+test('TS-130-10 hooks --agent cursor prints a hooks.json pointing every event at the translator, and says what is still unmeasured', async () => {
   const r = await cli(['hooks', '--agent', 'cursor'], { cwd: PLUGIN });
   assert.equal(r.code, 0);
-  assert.match(r.stderr, /UNVERIFIED/, 'what was not measured says so, on every run');
+  assert.match(r.stderr, /HALF MEASURED/, 'what is still unmeasured — a live fire — says so, on every run');
   const j = JSON.parse(r.stdout);
   assert.deepEqual(Object.keys(j.hooks).sort(), ['afterFileEdit', 'beforeMCPExecution', 'beforeShellExecution', 'stop']);
   for (const [ev, list] of Object.entries(j.hooks)) {

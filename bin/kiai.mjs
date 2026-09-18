@@ -164,9 +164,9 @@ export const GENERIC_CONTRACT = {
 };
 
 const CURSOR_HOOK_WARNING = [
-  'UNVERIFIED. No Cursor client was available on the machine that wrote this adapter (2026-09-18), so',
-  'the payload field names below come from Cursor\'s published hooks documentation, not from a hook',
-  'seen firing. adapters/cursor/kiai-cursor-hook.mjs is written to be permissive: it maps what it',
+  'HALF MEASURED. Cursor 3.19.7 loads this file (its hooks log: "Loaded 4 project hook(s)", 2026-09-19)',
+  'and the payload shape the translator expects was read from Cursor\'s own bundle — but no hook has',
+  'been seen FIRING in a live agent turn yet (that needs a signed-in Cursor). The translator is permissive: it maps what it',
   'recognises, records an `unknown` tool for what it does not, ALWAYS answers {"permission":"allow"}',
   'unless a `block` rule matches, and never exits non-zero — a translator must not be the reason',
   'Cursor stops working. If you have Cursor, run one session and `kiai status`: records mean it fired.',

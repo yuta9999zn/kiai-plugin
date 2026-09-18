@@ -1,9 +1,17 @@
 # Cursor → KIAI
 
-**Status: NOT MEASURED.** No Cursor client existed on the machine that wrote this adapter
-(2026-09-18). Everything below is written from Cursor's published hooks documentation, not from a
-hook seen firing. Treat it as a starting point that a Cursor user finishes, and read
-`kiai-cursor-hook.mjs` before trusting it.
+**Status: HALF MEASURED (2026-09-19, Cursor 3.19.7 installed for this).**
+
+| What | Measured? | Evidence |
+|---|---|---|
+| Cursor loads `.cursor/hooks.json` written by `kiai hooks --agent cursor` | **yes** | Cursor's hooks log: `Loaded 4 project hook(s) for steps: beforeShellExecution, beforeMCPExecution, afterFileEdit, stop` |
+| The payload shape the translator reads | **yes, from Cursor's own code** | `workbench.desktop.main.js` builds `{...event, session_id, hook_event_name, cursor_version, workspace_roots, user_email, transcript_path}`; `workspace_roots` holds URI paths (`/d:/tmp/repo` on Windows); shell events carry `command`, `cwd`, `conversation_id`, `generation_id` |
+| The translator on that shape | **yes** (TS-130-17) | records written, `git reset --hard` answered `deny`, `user_email` never reaches a record, root found from `workspace_roots` alone |
+| A hook **firing** in a live agent turn | **no** | the agent needs a signed-in Cursor account; the machine that measured the rest had none |
+
+Also seen in the same bundle, not yet used: Cursor 3.19.7 reads **`.claude/settings.json`** hooks too
+(`PreToolUse` → `preToolUse`, on by default), so `kiai hooks --rules > .claude/settings.json` may work
+in Cursor without this translator. Unverified — the payload it hands those hooks was not checked.
 
 ## Install
 
