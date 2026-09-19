@@ -42,8 +42,28 @@ import { buildPacket, renderPacket, checkPacket, packetBody, parsePacketSignatur
 import { importCodex, codexWriter, CODEX_AGENT } from '../lib/import-codex.mjs';
 import {
   loadRules, lintSet, checkExamples, nearMissReport, unexercisedConditions,
-  evaluate, searchRules, rulesDir, RULES_DIR,
+  evaluate, searchRules, rulesDir, RULES_DIR, explainHit, opacityReasons, commandOpacity,
 } from '../lib/rules.mjs';
+
+/**
+ * A `warn` that only reaches stderr is a warning nobody reviewing the session will ever see (UOW-132,
+ * measured: `kiai report` showed none of them). So every warn hit goes on the chain as a note — the
+ * rule, the action, and, for an `opaque` rule, why the command could not be read. `block` already
+ * leaves a PostToolUseFailure; `advice` never fires. Never throws: the black box must not bring the
+ * aircraft down.
+ */
+function noteWarnings(root, hits, action, by, { session = null, tool_use_id = null } = {}) {
+  for (const r of hits) {
+    if (r.enforcement !== 'warn') continue;
+    // Verbatim, not through `cell()`: that helper is for markdown and turns a backtick into a quote
+    // and `*` into `∗`, which made a note contradict its own reason (review 132 P2c). `noteRecord`
+    // redacts; newlines collapse so one note stays one line.
+    const raw = action.command !== undefined ? String(action.command) : action.path !== undefined ? String(action.path) : '';
+    const what = raw.replace(/[\r\n\t]+/g, ' ').slice(0, 200);
+    const line = `rule ${r.id} warned on ${action.tool || '?'} ${what}${explainHit(r, action)}`;
+    try { appendRecord(root, noteRecord(line, { cwd: root, by, session, tool_use_id })); } catch (e) { logError(root, e); }
+  }
+}
 import { signBlob, verifyBlob, addSigner, readAllowedSigners, allowedSignersFile, sshKeygenAvailable, fingerprint, fingerprintOfKeyLine, keyAlgorithm, NAMESPACE, SIG_STATE, SIG_FAIL, ALLOWED_SIGNERS_HEADER, reviewedSigner } from '../lib/sign.mjs';
 import os from 'node:os';
 
@@ -625,6 +645,7 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
               return 2;
             }
           }
+          let hookNoteRoot = null; let hookSession = null; let hookUseId = null;
           if (args.stdin) {
             // A Claude Code hook payload. Its field names differ from the flags, so map them here and
             // nowhere else: `tool_input` is free-form per tool, so flatten the two fields any rule has
@@ -635,6 +656,9 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
               // The host may run this hook from somewhere else (Cursor: the plugin directory) — the
               // rules that apply are the ones in the repository the payload points at.
               const hostRoot = findRoot(hostStart(h, cwd));
+              hookNoteRoot = hostRoot || root;
+              hookSession = h.session_id ?? h.conversation_id ?? null;
+              hookUseId = h.tool_use_id ?? h.generation_id ?? null;
               if (hostRoot && hostRoot !== root) ({ rules, problems, present } = loadRules(hostRoot));
               if (!present) { stderr.write(`kiai rules check --stdin: no ${rel}/ in ${hostRoot || root}; nothing to enforce, letting the action through
 `); return 0; }
@@ -670,11 +694,16 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
             stderr.write(`kiai rules check: ${problems.length} rule file problem(s) — those rules are NOT enforced; run \`kiai rules lint\`\n`);
           }
           const { decision, hits } = evaluate(rules, action);
+          // Running as a hook (--stdin) this is the action about to happen, not a question about one:
+          // a warn goes on that repository's chain — before any output branch, so `--json` does not
+          // become the twin that forgets (review 132 N2). A `--command` query from a terminal leaves
+          // no trace.
+          if (args.stdin && hookNoteRoot) noteWarnings(hookNoteRoot, hits, action, 'kiai rules check', { session: hookSession, tool_use_id: hookUseId });
           if (args.json) {
             stdout.write(JSON.stringify({
               decision,
               action,
-              hits: hits.map((r) => ({ id: r.id, enforcement: r.enforcement, title: r.title, statement: r.statement, why: r.why })),
+              hits: hits.map((r) => ({ id: r.id, enforcement: r.enforcement, title: r.title, statement: r.statement, why: r.why, reasons: opacityReasons(r, action) })),
             }, null, 2) + '\n');
             return decision === 'block' ? 2 : 0;
           }
@@ -682,7 +711,7 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
           if (decision === 'clear') { stdout.write('CLEAR — no rule here applies to that action\n'); return 0; }
           for (const r of hits) {
             const head = r.enforcement === 'block' ? 'BLOCKED BY' : r.enforcement === 'warn' ? 'WARNING' : 'ADVICE';
-            stdout.write(`${head} ${r.id} — ${plain(txt(r.title, lang), 110)}\n`);
+            stdout.write(`${head} ${r.id} — ${plain(txt(r.title, lang), 110)}${explainHit(r, action)}\n`);
             stdout.write(`  ${plain(txt(r.statement, lang), 200)}\n`);
             stdout.write(`  why: ${plain(txt(r.why, lang), 200)}\n`);
           }
@@ -774,14 +803,21 @@ async function main(argv = process.argv.slice(2), { cwd = process.cwd(), stdout 
       rec('PreToolUse');
       const { rules, problems } = loadRules(root);
       if (problems.length) stderr.write(`kiai wrap: ${problems.length} rule file problem(s) — those rules are NOT enforced; run \`kiai rules lint\`\n`);
-      const { decision, hits } = evaluate(rules, { tool, command: typeof input.command === 'string' ? input.command : cmdv.join(' '), path: input.file_path });
+      const action = { tool, command: typeof input.command === 'string' ? input.command : cmdv.join(' '), path: input.file_path };
+      const { decision, hits } = evaluate(rules, action);
       if (decision === 'block') {
         const r = hits[0];
         stderr.write(`kiai wrap: BLOCKED BY ${r.id} — ${(r.title && (r.title.en || r.title.vi)) || ''}\n  ${(r.why && (r.why.en || r.why.vi)) || ''}\n`);
         rec('PostToolUseFailure', { error: `blocked by rule ${r.id}` });
         return 2;
       }
-      for (const r of hits) if (r.enforcement === 'warn') stderr.write(`kiai wrap: WARNING ${r.id} — ${(r.title && (r.title.en || r.title.vi)) || ''}\n`);
+      for (const r of hits) if (r.enforcement === 'warn') stderr.write(`kiai wrap: WARNING ${r.id} — ${(r.title && (r.title.en || r.title.vi)) || ''}${explainHit(r, action)}\n`);
+      noteWarnings(root, hits, action, 'kiai wrap', { session, tool_use_id: useId });
+      // Both layers off at once: the rules cannot read this command AND nothing was photographed
+      // before it runs. Said once, plainly — this is the one case where `wrap` protects nothing.
+      if (!snapshot && commandOpacity(action.command).length) {
+        stderr.write(`kiai wrap: this command cannot be read by the rules and no snapshot was taken (${args['no-snapshot'] ? '--no-snapshot' : 'not a git repository'}) — no rule can match it and nothing can be restored if it destroys work\n`);
+      }
 
       const run = spawnSync(cmdv[0], cmdv.slice(1), { cwd, stdio: ['inherit', 'pipe', 'pipe'], encoding: 'utf8', shell: false, maxBuffer: 8 << 20 });
       if (run.stdout) stdout.write(run.stdout);

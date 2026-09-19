@@ -31,7 +31,7 @@ block we believe is correct with that warning attached. Details in [Codex CLI](#
 ## Pick your agent — what to run, step by step
 
 Whatever the agent, the repository needs the black box **once** (`init` creates `.kiai/` and seeds the
-26 starter rules; commit it, it is the repository's data):
+27 starter rules; commit it, it is the repository's data):
 
 ```bash
 git clone https://github.com/yuta9999zn/kiai-plugin ~/kiai-plugin    # or the marketplace install below; no npm install, zero dependencies
@@ -499,7 +499,7 @@ kiai rules lint                       # the gate on the rule files themselves
 | `statement`, `title` | the normative sentence, and a name people can find |
 | **`why`** | a rule whose reason is unwritten gets worked around |
 | **`source`** | the incident it came from — no rule out of thin air |
-| **`applies_when[]`** | conditions the engine evaluates. Without them a rule is advice |
+| **`applies_when[]`** | conditions the engine evaluates (`eq` `neq` `matches` `not_matches` `contains` `absent` `opaque`). Without them a rule is advice |
 | **`examples[]`** | each with `verdict`; a `warn`/`block` rule needs an allowed one carrying a real `action` |
 
 ### Three gates on the rules themselves
@@ -543,11 +543,65 @@ fastest way to get the hook switched off, after which it protects nothing at all
 the whole point: if a model gets to judge compliance, then whoever seizes the session seizes the
 verdict with it, and the rules are back to being advice.
 
+**A `warn` goes on the chain.** Until 0.8.0 a warning reached stderr and nothing else — `kiai report`
+never showed one. Now every warn hit is a `note` record (the rule, the action, the reason, and the
+session and `tool_use_id` of the call it is about, so `report --session` finds it), from `kiai wrap`,
+from the `rules check --stdin` hook (the one `kiai hooks --rules` installs — the marketplace plugin
+alone only records), and from the Cursor translator. A `block` already
+leaves its failure record; `advice` never fires, so nothing is written for it.
+
+### The third state: a command the rules cannot read (0.8.0)
+
+Every rule matches the command as **text**. On 2026-09-18 two ordinary shell lines walked through the
+`block` rule above and destroyed uncommitted work in a test repository:
+
+```bash
+A="git res"; B="et --har"; eval "$A$B"d
+git -c alias.nuke='reset --hard' nuke
+```
+
+The engine answered `CLEAR` — green for lack of evidence. The honest answer is a third one: *I cannot
+read this command*. The `opaque` op says it. It is deterministic and offline (no model): it parses the
+line, peels a `bash -c '<literal>'` wrapper (every non-Claude harness wraps commands that way), and
+names why the program that will run cannot be read from the text — `eval` (and PowerShell's
+`Invoke-Expression`); a variable, `$(…)` or backtick **in command position**; `bash -c "$X"`,
+`pwsh -c $x`, `cmd /c %X%`, `xargs sh -c '{}'`; `… | sh`, `source <(…)`; `git -c alias.…` or
+`GIT_CONFIG_PARAMETERS=…alias.…`; a git config key that runs a command (`core.editor`, `core.pager`,
+`diff.external`, …) **when its value is itself unreadable** (`core.pager=cat` names its program and
+is not flagged; `core.pager="$X"` is); a program or subcommand assembled from quotes or a backslash
+(`git re""set`, `''gi''t`, `gi\t`). The rule
+`safety/an-unreadable-command-is-not-a-pass` is `warn`, never `block`: blocking on suspicion is how
+a hook gets switched off.
+
+Measured on both sides (`test/opaque.test.mjs`, the numbers are asserted, not quoted): **77/77**
+bypass phrasings caught, including the two above byte for byte and the twins independent reviewers
+wrote over three rounds (`GIT_CONFIG_PARAMETERS=…`, `powershell -ExecutionPolicy Bypass -Command "$X"`,
+`timeout 30 bash -c "$X"`, `''gi''t`, `echo "don't $(eval "$X")"`, `bash <<EOF … EOF`,
+`f(){ eval "$X"; }; f`), and **0/115** false alarms on benign commands, most of them from those
+reviewers' corpora. Every round found alarms the author's corpus had not: **13/56** in round one
+(`export VAR="…"`, Windows relative paths like `src\app.py`), **7/7** in round two on ordinary
+`git config` lines after a reason was added too eagerly, **8/62** in round three (`-File x.ps1 -e prod`,
+`core.sshCommand="ssh -i $HOME/…"`), **2/29** in round four (`-Command (Get-Date)`). The lesson is in the test file: the false-alarm side is only
+measured by commands the detector's author did not write. On every distinct Bash command in this
+repository's own black box the same test asserts **0** false alarms and prints the count (223 at the
+time of writing); the flags it does allow are listed in the test as data, with who ran them and why
+(one so far: a reviewer proving `bash -c "''gi''t status"` runs git). The blind spots found so far are
+pinned by the same test (17 of them) so the docs cannot drift past the code — and each review round
+found new ones, so the list is what is known, not what exists: a quoted subcommand (`git 'reset' --hard`),
+an expansion in subcommand position (`git ${X:-reset} --hard` — flagging `$` in the second word would
+flag `echo $HOME`), a word assembled beyond the second position (`git reset --ha""rd`), quotes inside
+an option (`rm -r""f`, the same shape as `curl -H"…"`), running a file (`bash x.sh`, `bash -s < x.sh`
+— the program is named and the file has its own Write record), an interpreter one-liner
+(`python -c "…"`, `python -c "$CODE"`), a command handed to another machine, container or scheduler
+(`ssh host bash -c "$X"`, `docker run … sh -c "$X"`, `at now <<< "$X"`). It is a second
+tripwire. The wall is still the working-tree snapshot `kiai wrap` takes before every command, and
+`wrap --no-snapshot` on an opaque command now says, once, that both layers are off.
+
 ### What this does not do
 
 - It does not stop an agent that edits `.kiai/rules/` and commits the edit. Rules are reviewed like
   code, in git, by a person — that is the only thing holding them.
-- **23 of the 26 rules are `advice`** — findable and citable, enforced by nothing. Judgement does not
+- **23 of the 27 rules are `advice`** — findable and citable, enforced by nothing. Judgement does not
   reduce to a regex, and pretending otherwise would fill the day with false alarms. Measured honestly,
   this is a searchable rulebook with three locks on it, not an enforcement system.
 - The taxonomy measured across those 83 prompts also contains `tone_and_formatting`,
@@ -568,7 +622,7 @@ kiai import codex                                                   # Codex CLI:
 kiai hooks --agent cursor > .cursor/hooks.json                      # Cursor: translator (fires live on 3.21.13; 0.7.2+ for the BOM fix)
 ```
 
-`kiai init` now seeds the 26 starter rules into `.kiai/rules/`, so a fresh install gets the key and not only
+`kiai init` now seeds the 27 starter rules into `.kiai/rules/`, so a fresh install gets the key and not only
 the lock (measured 2026-09-18: a marketplace install had the `rules` command and no rule).
 
 | | status | evidence |
@@ -596,7 +650,7 @@ call it — but the only hook system it has been seen working with is Claude Cod
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.4)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 175 tests (v0.8.0)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).

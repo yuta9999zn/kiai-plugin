@@ -19,6 +19,9 @@ const CLI = path.join(PLUGIN, 'bin', 'kiai.mjs');
 const CURSOR = path.join(PLUGIN, 'adapters', 'cursor', 'kiai-cursor-hook.mjs');
 const HAVE_GIT = spawnSync('git', ['--version'], { stdio: 'ignore' }).status === 0;
 const needGit = { skip: HAVE_GIT ? false : 'git not available on this machine' };
+// The `bash` on PATH must keep shell variables: the WSL launcher at System32\\bash.exe does not (UOW-132 review, N-R3c).
+const BASH_OK = spawnSync('bash', ['-c', 'X=hi; echo [$X]'], { encoding: 'utf8' }).stdout?.trim() === '[hi]';
+const needBash = { skip: !HAVE_GIT ? 'git not available on this machine' : BASH_OK ? false : 'the `bash` on PATH is not a POSIX shell that keeps variables (WSL launcher?) — use Git Bash' };
 
 function run(file, args, { cwd, input = '', env = {}, timeout = 30000 } = {}) {
   const clean = { ...process.env, ...env };
@@ -152,7 +155,7 @@ test('TS-130-07 wrap without a command, or with a bad --input, says so and runs 
 
 // ---- the Cursor translator — written blind, so it must fail SAFE ----------------------------------
 
-test('TS-130-11 a rephrased `reset --hard` walks through the rules — and the snapshot brings the file back (R1-N2)', needGit, async () => {
+test('TS-130-11 a rephrased `reset --hard` walks through the rules — and the snapshot brings the file back (R1-N2)', needBash, async () => {
   // Review round 1 of UOW-130. The rules match the command STRING, so a command that spells
   // `git reset --hard` out of variables and `eval`, or hides it behind `git -c alias.X=…`, is not
   // matched. Both destroyed uncommitted work in a test repo. This test keeps that fact measured

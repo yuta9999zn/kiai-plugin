@@ -12,7 +12,7 @@ model said it did.
 
 ```bash
 cd your-repo
-node <plugin>/bin/kiai.mjs init                                   # once: .kiai/ + the 26 starter rules
+node <plugin>/bin/kiai.mjs init                                   # once: .kiai/ + the 27 starter rules
 OLLAMA_HOST=http://127.0.0.1:11434 OLLAMA_MODEL=qwen2.5:7b \
 node <plugin>/adapters/ollama/harness.mjs "List the files here, show the last commit, then try git reset --hard HEAD~1"
 node <plugin>/bin/kiai.mjs status                                 # records > 0 — it worked
@@ -53,6 +53,6 @@ harness and call `kiai wrap` yourself; the payload contract for recording withou
 
 - It protects only the commands that go through `wrap`. A harness that calls the shell directly records
   nothing and blocks nothing.
-- 23 of the 26 starter rules are `advice`: searchable (`kiai rules search …`), not enforced.
+- 23 of the 27 starter rules are `advice`: searchable (`kiai rules search …`), not enforced.
 - The model can still be told wrong things by its own tools; KIAI records the call, it does not judge
   the answer.

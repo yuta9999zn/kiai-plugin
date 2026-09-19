@@ -16,8 +16,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendRecord, buildRecord, logError } from '../../lib/flight.mjs';
-import { loadRules, evaluate } from '../../lib/rules.mjs';
+import { appendRecord, buildRecord, noteRecord, logError } from '../../lib/flight.mjs';
+import { loadRules, evaluate, explainHit } from '../../lib/rules.mjs';
 
 const EVENT = process.argv[2] || '';
 
@@ -117,6 +117,15 @@ function main() {
           const r = hits[0];
           const why = (r.why && (r.why.en || r.why.vi)) || '';
           answer = { permission: 'deny', user_message: `KIAI: blocked by ${r.id}`, agent_message: `Blocked by rule ${r.id}: ${(r.statement && (r.statement.en || r.statement.vi)) || ''} — ${why}` };
+        }
+        // A warn still allows — but it goes on the chain (UOW-132): a warning that only the editor's
+        // log saw is a warning the reviewer never sees. Same line `kiai wrap` writes.
+        for (const r of hits) {
+          if (r.enforcement !== 'warn') continue;
+          // Verbatim (not `cell()`, which is for markdown — review 132 P2c); `noteRecord` redacts.
+          const raw = action.command !== undefined ? String(action.command) : action.path !== undefined ? String(action.path) : '';
+          const what = raw.replace(/[\r\n\t]+/g, ' ').slice(0, 200);
+          try { appendRecord(root, noteRecord(`rule ${r.id} warned on ${action.tool || '?'} ${what}${explainHit(r, action)}`, { cwd: root, by: 'kiai cursor hook', session: rec.session_id ?? null, tool_use_id: rec.tool_use_id ?? null })); } catch (e) { try { logError(root, e); } catch { /* nothing left to do */ } }
         }
       } catch { /* a broken rule file must not stop the editor; `kiai rules lint` reports it */ }
     }
