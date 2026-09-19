@@ -17,7 +17,7 @@ Gửi dev **đúng một dòng**: `https://github.com/yuta9999zn/kiai-plugin` �
 
 | Tác tử / model | Đường vào | Trạng thái | Bằng chứng |
 |---|---|---|---|
-| **Claude Code** | plugin từ marketplace; hook tự ghi mọi tool call; `PreToolUse` chặn được bằng luật | **ĐÃ ĐO** | cài từ marketplace trên máy chưa từng thêm marketplace, 2026-09-18: `kiai@kiai 0.7.0 enabled`; hook nổ, chuỗi có record |
+| **Claude Code** | plugin từ marketplace; hook tự ghi mọi tool call; `PreToolUse` chặn được bằng luật | **ĐÃ ĐO** | cài từ marketplace trên máy chưa từng thêm marketplace, 2026-09-18: `kiai@kiai 0.7.0 enabled`; hook nổ — 19/09, 3 phiên Claude Code mới (`claude -p`) trong repo KIAI: **19 record** (session_start/stop/session_end ×3, `Skill` 1 cặp, `Bash` 4 cặp), `verify` OK |
 | **Codex CLI** | `kiai import codex` đọc rollout Codex đã ghi sẵn | **ĐÃ ĐO** | UOW-124: 85 rollout thật, 30 record nhập, chạy lần 2 nhập 0 |
 | Codex CLI — hook | `kiai hooks --agent codex` | **CHƯA XÁC NHẬN** | 3 cấu hình thử 2026-09-17, không cái nào nổ |
 | **Model bất kỳ** (Qwen, Llama, GPT qua API, LM Studio, vLLM…) | harness gọi `kiai wrap` cho mỗi tool call | **ĐÃ ĐO — có giới hạn** | `qwen2.5:7b` qua Ollama, 2026-09-18: `git reset --hard` viết trần **bị chặn**, model đọc lý do và tự giải thích lại; 6 record, `verify` xanh. **Nhưng** luật so khớp **chuỗi lệnh**: cùng lệnh viết bằng biến + `eval`, hay `git -c alias.x='reset --hard' x`, **đi lọt và phá dữ liệu thật** (đo 18/09, review vòng 1). Cái không vòng qua được là **snapshot** cây làm việc `wrap` chụp trước mỗi lệnh — xem §5 |
@@ -51,7 +51,7 @@ claude plugin install kiai@kiai
 cd <repo> && node ~/.claude/plugins/cache/kiai/kiai/*/bin/kiai.mjs init
 ```
 
-Hook cài theo plugin: mọi phiên, mọi tool call tự ghi — **đã đo**: chính repo KIAI được ghi bằng hook này suốt từ UOW-119. Muốn luật **chặn** được hành động (không chỉ ghi):
+Hook cài theo plugin: mọi phiên, mọi tool call tự ghi — **đã đo** 19/09: 3 phiên Claude Code mới trong repo KIAI ⇒ 19 record, `verify` OK. (Bản trước viết *"chính repo KIAI được ghi suốt từ UOW-119"* — **sai**: repo KIAI chưa từng `kiai init`, không có record nào trong git; câu ấy là nói quá, sửa 19/09.) Muốn luật **chặn** được hành động (không chỉ ghi):
 
 ```bash
 kiai hooks --rules > .claude/settings.json      # PreToolUse chạy `rules check` trước bộ ghi

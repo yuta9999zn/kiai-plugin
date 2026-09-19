@@ -596,7 +596,7 @@ call it — but the only hook system it has been seen working with is Claude Cod
 ## Development
 
 ```bash
-cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.3)
+cd kiai-plugin && npm test      # node --test, offline, ~35 s, 165 tests (v0.7.4)
 ```
 
 MIT © 2026 Nguyen Truong An. Part of [KIAI](https://github.com/yuta9999zn/KIAI).
